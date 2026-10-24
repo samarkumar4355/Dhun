@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Dhun",
-    "slug": "Dhun",
+    "slug": "dhun",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,6 +11,7 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.samarsground.dhun",
       "adaptiveIcon": {
         "backgroundColor": "#101312",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,6 +38,17 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "a9ac9004-1c03-48db-882e-2c6daf182a58"
+      }
+    },
+    "owner": "samars-ground"
   }
 }

@@ -60,21 +60,23 @@ export default function SourcesScreen() {
         </View>
 
         {/* Supported formats */}
-        <GlassSurface
-          variant="subtle"
-          borderRadius={radius.lg}
-          style={styles.formatsSection}
-        >
-          <View style={styles.formatsRow}>
-            <Ionicons name="information-circle" size={16} color={colors.accent} />
-            <Text style={[typography.bodySmall, { color: colors.textPrimary, marginLeft: spacing.sm, fontWeight: '500' }]}>
-              Supported lossless & compressed formats
+        <View style={styles.formatsContainer}>
+          <GlassSurface
+            variant="subtle"
+            borderRadius={radius.lg}
+            style={styles.formatsCard}
+          >
+            <View style={styles.formatsRow}>
+              <Ionicons name="information-circle" size={16} color={colors.accent} />
+              <Text style={[typography.bodySmall, { color: colors.textPrimary, marginLeft: spacing.sm, fontWeight: '500' }]}>
+                Supported lossless & compressed formats
+              </Text>
+            </View>
+            <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs, marginLeft: 24 }]}>
+              FLAC, ALAC, WAV, AIFF, MP3, AAC, OGG
             </Text>
-          </View>
-          <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
-            FLAC, ALAC, WAV, AIFF, MP3, AAC, OGG
-          </Text>
-        </GlassSurface>
+          </GlassSurface>
+        </View>
 
         {/* Flowing Waves */}
         <View style={styles.wavesSection}>
@@ -151,9 +153,13 @@ const styles = StyleSheet.create({
     marginRight: spacing.lg,
     width: 28,
   },
-  formatsSection: {
+  formatsContainer: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing['3xl'],
+    marginTop: spacing.lg,
+  },
+  formatsCard: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
   },
   formatsRow: {
     flexDirection: 'row',
