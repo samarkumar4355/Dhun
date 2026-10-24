@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { usePlayer } from '@/services/PlayerProvider';
+import { useAuth } from '@/services/AuthProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -26,6 +27,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function ListenScreen() {
   const { colors, timePeriod } = useTheme();
   const { currentSong, play } = usePlayer();
+  const { user } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -33,6 +35,9 @@ export default function ListenScreen() {
   const timePhrase = getTimePhraseHindi();
   const recentSongs = mockSongs.slice(0, 3);
   const likedSongs = mockSongs.filter(s => s.isFavorite);
+
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Listener';
+  const initials = user?.name ? getInitials(user.name) : 'DL';
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -46,7 +51,7 @@ export default function ListenScreen() {
           <View>
             <Text style={[styles.brandName, { color: colors.textPrimary }]}>Dhun</Text>
             <Text style={[typography.bodyLarge, { color: colors.textSecondary, marginTop: 2 }]}>
-              {greeting}, Arjun
+              {greeting}, {firstName}
             </Text>
           </View>
           <View style={styles.headerRight}>
@@ -62,8 +67,8 @@ export default function ListenScreen() {
               onPress={() => router.push('/settings')}
               accessibilityLabel="Profile"
             >
-              <View style={[styles.avatar, { backgroundColor: stringToColor('Arjun Mehta') }]}>
-                <Text style={styles.avatarText}>AM</Text>
+              <View style={[styles.avatar, { backgroundColor: stringToColor(user?.name || 'Dhun') }]}>
+                <Text style={styles.avatarText}>{initials}</Text>
               </View>
             </Pressable>
           </View>

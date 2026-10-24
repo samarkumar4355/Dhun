@@ -10,6 +10,7 @@ import { usePlayer } from '@/services/PlayerProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SongRow } from '@/components/SongRow';
+import { CometOrbit } from '@/components/CometOrbit';
 import { mockArtists } from '@/data/mockArtists';
 import { mockSongs } from '@/data/mockSongs';
 import { mockAlbums } from '@/data/mockAlbums';
@@ -56,16 +57,18 @@ export default function ArtistsScreen() {
 
           {/* Artist profile */}
           <View style={styles.artistProfile}>
-            <View
-              style={[
-                styles.artistLargeAvatar,
-                { backgroundColor: stringToColor(selectedArtist.name) },
-              ]}
-            >
-              <Text style={styles.artistLargeInitials}>
-                {getInitials(selectedArtist.name)}
-              </Text>
-            </View>
+            <CometOrbit iconSize={120} gap={5} duration={5}>
+              <View
+                style={[
+                  styles.artistLargeAvatar,
+                  { backgroundColor: stringToColor(selectedArtist.name) },
+                ]}
+              >
+                <Text style={styles.artistLargeInitials}>
+                  {getInitials(selectedArtist.name)}
+                </Text>
+              </View>
+            </CometOrbit>
             <Text style={[typography.h1, { color: colors.textPrimary, marginTop: spacing.lg }]}>
               {selectedArtist.name}
             </Text>

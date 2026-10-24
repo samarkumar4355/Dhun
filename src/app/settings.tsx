@@ -10,7 +10,8 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SettingsRow } from '@/components/SettingsRow';
 import { ThemeMode } from '@/types/music';
-import { stringToColor } from '@/utils/helpers';
+import { stringToColor, getInitials } from '@/utils/helpers';
+import { useAuth } from '@/services/AuthProvider';
 
 const themeLabels: Record<ThemeMode, string> = {
   auto: 'Auto (Time)',
@@ -21,6 +22,7 @@ const themeLabels: Record<ThemeMode, string> = {
 
 export default function SettingsScreen() {
   const { colors, themeMode, setThemeMode } = useTheme();
+  const { user, isAuthenticated, logout, getGeneratedPassword } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [audioQuality, setAudioQuality] = useState('Lossless / Hi-Res');
@@ -36,6 +38,38 @@ export default function SettingsScreen() {
     const qualities = ['Standard', 'High', 'Lossless / Hi-Res'];
     const currentIdx = qualities.indexOf(audioQuality);
     setAudioQuality(qualities[(currentIdx + 1) % qualities.length]);
+  };
+
+  const handleShowPassword = () => {
+    if (!user) return;
+    const pwd = getGeneratedPassword(user.email);
+    if (pwd) {
+      Alert.alert(
+        'Generated Password',
+        `Your password for ${user.email} is:\n\n${pwd}\n\nUse this to log in on other devices.`,
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert('Notice', 'No generated password found for this account.');
+    }
+  };
+
+  const handleAuthAction = async () => {
+    if (isAuthenticated) {
+      Alert.alert('Log Out', 'Are you sure you want to log out of Dhun?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/login');
+          },
+        },
+      ]);
+    } else {
+      router.push('/login');
+    }
   };
 
   const showPrototypeAlert = (feature: string) => {
@@ -60,24 +94,65 @@ export default function SettingsScreen() {
           <Text style={[typography.h2, { color: colors.textPrimary, marginLeft: spacing.lg }]}>Settings</Text>
         </View>
 
-        {/* Profile */}
+        {/* Profile Card */}
         <Pressable
           style={[styles.profileCard, { backgroundColor: colors.surface }]}
-          onPress={() => showPrototypeAlert('Profile editing')}
+          onPress={() => {
+            if (!isAuthenticated) router.push('/login');
+            else showPrototypeAlert('Profile details');
+          }}
         >
-          <View style={[styles.profileAvatar, { backgroundColor: stringToColor('Arjun Mehta') }]}>
-            <Text style={styles.profileAvatarText}>AM</Text>
+          <View
+            style={[
+              styles.profileAvatar,
+              { backgroundColor: stringToColor(user?.name || 'Dhun Guest') },
+            ]}
+          >
+            <Text style={styles.profileAvatarText}>
+              {user?.name ? getInitials(user.name) : 'DG'}
+            </Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600' }]}>
-              Arjun Mehta
+              {user?.name || 'Guest Listener'}
             </Text>
             <Text style={[typography.caption, { color: colors.textSecondary }]}>
-              arjun@email.com
+              {user?.email || 'Tap to sign in or create an account'}
             </Text>
+            {user?.provider ? (
+              <Text style={[typography.caption, { color: colors.accent, marginTop: 2, fontSize: 10 }]}>
+                {user.provider === 'google' ? 'Connected via Google' : 'Email Account'}
+              </Text>
+            ) : null}
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          <Ionicons
+            name={isAuthenticated ? 'chevron-forward' : 'log-in-outline'}
+            size={18}
+            color={colors.textMuted}
+          />
         </Pressable>
+
+        {/* Account Group */}
+        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
+          {user?.provider === 'email' ? (
+            <>
+              <SettingsRow
+                icon="key-outline"
+                label="View Generated Password"
+                value="Reveal"
+                onPress={handleShowPassword}
+              />
+              <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
+            </>
+          ) : null}
+
+          <SettingsRow
+            icon={isAuthenticated ? 'log-out-outline' : 'log-in-outline'}
+            label={isAuthenticated ? 'Log Out' : 'Sign In / Sign Up'}
+            value={isAuthenticated ? 'Active' : ''}
+            onPress={handleAuthAction}
+          />
+        </View>
 
         {/* Settings sections */}
         <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>

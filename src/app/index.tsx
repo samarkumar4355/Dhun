@@ -13,6 +13,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
+import { useAuth } from '@/services/AuthProvider';
 import { DhunWordmark } from '@/components/DhunWordmark';
 import { FlowingWaves } from '@/animations/FlowingWaves';
 
@@ -20,6 +21,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function SplashScreen() {
   const { colors } = useTheme();
+  const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   const wordmarkOpacity = useSharedValue(0);
@@ -28,8 +30,12 @@ export default function SplashScreen() {
   const taglineOpacity = useSharedValue(0);
   const phraseOpacity = useSharedValue(0);
 
-  const navigateToHome = () => {
-    router.replace('/(tabs)/listen');
+  const navigateNext = () => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)/listen');
+    } else {
+      router.replace('/login');
+    }
   };
 
   useEffect(() => {
@@ -61,11 +67,11 @@ export default function SplashScreen() {
 
     // Navigate after animation
     const timer = setTimeout(() => {
-      navigateToHome();
+      navigateNext();
     }, 3500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isAuthenticated]);
 
   const wordmarkStyle = useAnimatedStyle(() => ({
     opacity: wordmarkOpacity.value,
