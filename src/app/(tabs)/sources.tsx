@@ -11,9 +11,10 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { FlowingWaves } from '@/animations/FlowingWaves';
 import { MiniPlayer } from '@/components/MiniPlayer';
+import { GlassSurface } from '@/components/GlassSurface';
 
 export default function SourcesScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const { currentSong } = usePlayer();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -59,17 +60,21 @@ export default function SourcesScreen() {
         </View>
 
         {/* Supported formats */}
-        <View style={styles.formatsSection}>
+        <GlassSurface
+          variant="subtle"
+          borderRadius={radius.lg}
+          style={styles.formatsSection}
+        >
           <View style={styles.formatsRow}>
-            <Ionicons name="information-circle" size={16} color={colors.textMuted} />
-            <Text style={[typography.bodySmall, { color: colors.textMuted, marginLeft: spacing.sm }]}>
-              Supported formats
+            <Ionicons name="information-circle" size={16} color={colors.accent} />
+            <Text style={[typography.bodySmall, { color: colors.textPrimary, marginLeft: spacing.sm, fontWeight: '500' }]}>
+              Supported lossless & compressed formats
             </Text>
           </View>
-          <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.xs }]}>
-            MP3, FLAC, ALAC, AAC, WAV, OGG
+          <Text style={[typography.caption, { color: colors.textSecondary, marginTop: spacing.xs }]}>
+            FLAC, ALAC, WAV, AIFF, MP3, AAC, OGG
           </Text>
-        </View>
+        </GlassSurface>
 
         {/* Flowing Waves */}
         <View style={styles.wavesSection}>
@@ -100,16 +105,12 @@ function ImportOption({
   colors: ReturnType<typeof useTheme>['colors'];
 }) {
   return (
-    <Pressable
+    <GlassSurface
+      variant="card"
+      borderRadius={radius.lg}
+      showTopHighlight
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.importOption,
-        {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}
+      style={styles.importOption}
       accessibilityLabel={title}
       accessibilityRole="button"
     >
@@ -123,7 +124,7 @@ function ImportOption({
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-    </Pressable>
+    </GlassSurface>
   );
 }
 

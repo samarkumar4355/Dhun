@@ -16,10 +16,20 @@ interface AlbumCardProps {
 }
 
 export function AlbumCard({ title, artistName, artwork, onPress, size = 140 }: AlbumCardProps) {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
 
   return (
-    <Pressable onPress={onPress} style={[styles.container, { width: size }]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.container,
+        {
+          width: size,
+          opacity: pressed ? 0.88 : 1,
+          transform: pressed ? [{ scale: 0.98 }] : [{ scale: 1 }],
+        },
+      ]}
+    >
       <View
         style={[
           styles.artwork,
@@ -28,9 +38,18 @@ export function AlbumCard({ title, artistName, artwork, onPress, size = 140 }: A
             height: size,
             backgroundColor: stringToColor(title),
             borderRadius: radius.lg,
+            borderColor: glass.borderHighlight,
+            borderWidth: 1,
           },
         ]}
       >
+        <View
+          pointerEvents="none"
+          style={[
+            styles.sheenLine,
+            { backgroundColor: glass.borderHighlight },
+          ]}
+        />
         <Text style={styles.artworkText}>{getInitials(title)}</Text>
       </View>
       <Text
@@ -57,6 +76,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  sheenLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 0.75,
+    zIndex: 2,
   },
   artworkText: {
     color: 'rgba(255,255,255,0.6)',

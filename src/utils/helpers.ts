@@ -57,3 +57,15 @@ export function getInitials(name: string): string {
     .join('')
     .toUpperCase();
 }
+
+/** Safely navigate back if history exists, or fall back to a default route */
+export function safeBack(
+  router: { canGoBack: () => boolean; back: () => void; replace: (href: any) => void },
+  fallback: string = '/(tabs)/listen'
+): void {
+  if (router.canGoBack()) {
+    router.back();
+  } else {
+    router.replace(fallback);
+  }
+}

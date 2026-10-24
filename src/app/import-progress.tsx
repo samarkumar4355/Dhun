@@ -8,12 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
-import { formatFileSize } from '@/utils/helpers';
+import { formatFileSize, safeBack } from '@/utils/helpers';
 import { mockImportJobs } from '@/services/mockImportService';
 import { ImportJob } from '@/types/music';
+import { GlassSurface } from '@/components/GlassSurface';
+import { AnimatedBorder } from '@/components/AnimatedBorder';
 
 export default function ImportProgressScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [jobs, setJobs] = useState<ImportJob[]>(mockImportJobs);
@@ -60,7 +62,7 @@ export default function ImportProgressScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+          <Pressable onPress={() => safeBack(router, '/(tabs)/sources')} hitSlop={12} accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </Pressable>
           <Text style={[typography.h3, { color: colors.textPrimary, marginLeft: spacing.lg, flex: 1 }]}>
@@ -70,51 +72,65 @@ export default function ImportProgressScreen() {
 
         {/* Main progress card */}
         {activeJob && (
-          <View style={[styles.mainCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.mainCardHeader}>
-              <Ionicons name="document" size={20} color={colors.accent} />
-              <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600', marginLeft: spacing.sm, flex: 1 }]}>
-                {activeJob.sourceName}
-              </Text>
-              <Text style={[typography.label, { color: colors.accent }]}>
-                {totalProgress}%
-              </Text>
-            </View>
-
-            <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm }]}>
-              {activeJob.processedFiles} / {activeJob.totalFiles} files
-            </Text>
-
-            {/* Progress bar */}
-            <View style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: colors.progressFill, width: `${totalProgress}%` },
-                ]}
-              />
-            </View>
-
-            {/* Stats row */}
-            <View style={styles.statsRow}>
-              <View style={styles.stat}>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>Estimated size</Text>
-                <Text style={[typography.label, { color: colors.textPrimary }]}>
-                  {formatFileSize(activeJob.estimatedSize)}
+          <AnimatedBorder
+            id="active_import"
+            active
+            borderRadius={radius.lg}
+            duration={6.5}
+            strokeWidth={1.3}
+            style={styles.activeBorderWrapper}
+          >
+            <GlassSurface
+              variant="card"
+              borderRadius={radius.lg}
+              showTopHighlight
+              style={styles.mainCard}
+            >
+              <View style={styles.mainCardHeader}>
+                <Ionicons name="document" size={20} color={colors.accent} />
+                <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600', marginLeft: spacing.sm, flex: 1 }]}>
+                  {activeJob.sourceName}
+                </Text>
+                <Text style={[typography.label, { color: colors.accent }]}>
+                  {totalProgress}%
                 </Text>
               </View>
-              <View style={styles.stat}>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>Formats found</Text>
-                <Text style={[typography.label, { color: colors.textPrimary }]}>
-                  {activeJob.formats.join(', ')}
-                </Text>
+
+              <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                {activeJob.processedFiles} / {activeJob.totalFiles} files
+              </Text>
+
+              {/* Progress bar */}
+              <View style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    { backgroundColor: colors.progressFill, width: `${totalProgress}%` },
+                  ]}
+                />
               </View>
-              <View style={styles.stat}>
-                <Text style={[typography.caption, { color: colors.textMuted }]}>Time remaining</Text>
-                <Text style={[typography.label, { color: colors.textPrimary }]}>~12 min</Text>
+
+              {/* Stats row */}
+              <View style={styles.statsRow}>
+                <View style={styles.stat}>
+                  <Text style={[typography.caption, { color: colors.textMuted }]}>Estimated size</Text>
+                  <Text style={[typography.label, { color: colors.textPrimary }]}>
+                    {formatFileSize(activeJob.estimatedSize)}
+                  </Text>
+                </View>
+                <View style={styles.stat}>
+                  <Text style={[typography.caption, { color: colors.textMuted }]}>Formats found</Text>
+                  <Text style={[typography.label, { color: colors.textPrimary }]}>
+                    {activeJob.formats.join(', ')}
+                  </Text>
+                </View>
+                <View style={styles.stat}>
+                  <Text style={[typography.caption, { color: colors.textMuted }]}>Time remaining</Text>
+                  <Text style={[typography.label, { color: colors.textPrimary }]}>~12 min</Text>
+                </View>
               </View>
-            </View>
-          </View>
+            </GlassSurface>
+          </AnimatedBorder>
         )}
 
         {/* Job list */}
@@ -210,12 +226,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
-  mainCard: {
+  activeBorderWrapper: {
     marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  mainCard: {
     padding: spacing.lg,
     borderRadius: radius.lg,
-    borderWidth: 0.5,
-    marginBottom: spacing.xl,
   },
   mainCardHeader: {
     flexDirection: 'row',

@@ -11,6 +11,7 @@ import { spacing, radius } from '@/theme/spacing';
 import { ArtistCard } from '@/components/ArtistCard';
 import { SongRow } from '@/components/SongRow';
 import { MiniPlayer } from '@/components/MiniPlayer';
+import { GlassSurface } from '@/components/GlassSurface';
 import { mockSongs } from '@/data/mockSongs';
 import { mockArtists } from '@/data/mockArtists';
 import { mockAlbums } from '@/data/mockAlbums';
@@ -18,7 +19,7 @@ import { mockAlbums } from '@/data/mockAlbums';
 const trendingArtists = ['Arijit Singh', 'Taylor Swift', 'lofi', 'The Weeknd', 'A.R. Rahman', 'Armaan Malik'];
 
 export default function SearchScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const { currentSong, play } = usePlayer();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
@@ -48,8 +49,13 @@ export default function SearchScreen() {
           <Text style={[typography.h1, { color: colors.textPrimary }]}>Search</Text>
         </View>
 
-        {/* Search Bar */}
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {/* Frosted Glass Search Bar */}
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={styles.searchBar}
+        >
           <Ionicons name="search" size={18} color={colors.textMuted} />
           <TextInput
             value={query}
@@ -65,7 +71,7 @@ export default function SearchScreen() {
               <Ionicons name="close-circle" size={18} color={colors.textMuted} />
             </Pressable>
           )}
-        </View>
+        </GlassSurface>
 
         {query.trim() === '' ? (
           <>
@@ -76,15 +82,17 @@ export default function SearchScreen() {
               </Text>
               <View style={styles.chipRow}>
                 {trendingArtists.map(name => (
-                  <Pressable
+                  <GlassSurface
                     key={name}
+                    variant="subtle"
+                    borderRadius={radius.full}
                     onPress={() => setQuery(name)}
-                    style={[styles.chip, { borderColor: colors.border }]}
+                    style={styles.chip}
                   >
                     <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>
                       {name}
                     </Text>
-                  </Pressable>
+                  </GlassSurface>
                 ))}
               </View>
             </View>

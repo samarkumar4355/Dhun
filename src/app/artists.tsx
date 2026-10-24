@@ -1,7 +1,7 @@
 // ─── Artists Screen ─────────────────────────────────────────────────
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,15 +10,16 @@ import { usePlayer } from '@/services/PlayerProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SongRow } from '@/components/SongRow';
-import { CometOrbit } from '@/components/CometOrbit';
+import { ArtistBorderRing } from '@/components/ArtistBorderRing';
 import { mockArtists } from '@/data/mockArtists';
 import { mockSongs } from '@/data/mockSongs';
 import { mockAlbums } from '@/data/mockAlbums';
-import { stringToColor, getInitials } from '@/utils/helpers';
+import { stringToColor, getInitials, safeBack } from '@/utils/helpers';
 import { Artist } from '@/types/music';
+import { webGlassStyle } from '@/theme/glass';
 
 export default function ArtistsScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { play, currentSong } = usePlayer();
@@ -57,18 +58,28 @@ export default function ArtistsScreen() {
 
           {/* Artist profile */}
           <View style={styles.artistProfile}>
-            <CometOrbit iconSize={120} gap={5} duration={5}>
+            <ArtistBorderRing
+              id={selectedArtist.id}
+              iconSize={120}
+              gap={4}
+              duration={6.0}
+              strokeWidth={2.4}
+            >
               <View
                 style={[
                   styles.artistLargeAvatar,
-                  { backgroundColor: stringToColor(selectedArtist.name) },
+                  {
+                    backgroundColor: stringToColor(selectedArtist.name),
+                    borderColor: glass.borderHighlight,
+                    borderWidth: 1.5,
+                  },
                 ]}
               >
                 <Text style={styles.artistLargeInitials}>
                   {getInitials(selectedArtist.name)}
                 </Text>
               </View>
-            </CometOrbit>
+            </ArtistBorderRing>
             <Text style={[typography.h1, { color: colors.textPrimary, marginTop: spacing.lg }]}>
               {selectedArtist.name}
             </Text>
@@ -141,7 +152,7 @@ export default function ArtistsScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+          <Pressable onPress={() => safeBack(router, '/(tabs)/listen')} hitSlop={12} accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </Pressable>
           <Text style={[typography.h1, { color: colors.textPrimary, marginLeft: spacing.lg, flex: 1 }]}>
@@ -150,7 +161,16 @@ export default function ArtistsScreen() {
         </View>
 
         {/* Search */}
-        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.searchBar,
+            {
+              backgroundColor: glass.surface,
+              borderColor: glass.border,
+            },
+            Platform.OS === 'web' ? (webGlassStyle as any) : null,
+          ]}
+        >
           <Ionicons name="search" size={18} color={colors.textMuted} />
           <TextInput
             value={search}

@@ -10,10 +10,12 @@ import { usePlayer } from '@/services/PlayerProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { QualityBadge } from '@/components/QualityBadge';
-import { formatFileSize, formatSampleRate, stringToColor, getInitials } from '@/utils/helpers';
+import { GlassSurface } from '@/components/GlassSurface';
+import { AnimatedBorder } from '@/components/AnimatedBorder';
+import { formatFileSize, formatSampleRate, stringToColor, getInitials, safeBack } from '@/utils/helpers';
 
 export default function AudioDetailsScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { currentSong } = usePlayer();
@@ -21,7 +23,7 @@ export default function AudioDetailsScreen() {
   if (!currentSong) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <Pressable onPress={() => safeBack(router, '/(tabs)/listen')} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </Pressable>
         <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center', marginTop: 60 }]}>
@@ -41,7 +43,7 @@ export default function AudioDetailsScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+          <Pressable onPress={() => safeBack(router, '/(tabs)/listen')} hitSlop={12} accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </Pressable>
           <Text style={[typography.h3, { color: colors.textPrimary, marginLeft: spacing.lg }]}>Audio Details</Text>
@@ -72,33 +74,52 @@ export default function AudioDetailsScreen() {
         </View>
 
         {/* Source File section */}
-        <View style={[styles.detailsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.md }]}>
-            Source File
-          </Text>
+        <AnimatedBorder
+          id="lossless_card"
+          active={isLossless}
+          borderRadius={radius.lg}
+          style={styles.cardBorderWrapper}
+          duration={7}
+          strokeWidth={1.3}
+        >
+          <GlassSurface
+            variant="card"
+            borderRadius={radius.lg}
+            showTopHighlight
+            style={styles.detailsCard}
+          >
+            <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+              Source File
+            </Text>
 
-          <DetailRow label="Format" value={currentSong.format} colors={colors} />
-          <DetailRow label="Bit Depth" value={`${currentSong.bitDepth} bit`} colors={colors} />
-          <DetailRow label="Sample Rate" value={formatSampleRate(currentSong.sampleRate)} colors={colors} />
-          <DetailRow label="File Size" value={formatFileSize(currentSong.fileSize)} colors={colors} />
-          <DetailRow
-            label="Source"
-            value={
-              currentSong.source === 'local' ? 'Device Storage' :
-              currentSong.source === 'google-drive' ? 'Google Drive' : 'Imported'
-            }
-            colors={colors}
-          />
-          <DetailRow
-            label="Offline"
-            value={currentSong.isOffline ? 'Available' : 'Requires network'}
-            colors={colors}
-            isLast
-          />
-        </View>
+            <DetailRow label="Format" value={currentSong.format} colors={colors} />
+            <DetailRow label="Bit Depth" value={`${currentSong.bitDepth} bit`} colors={colors} />
+            <DetailRow label="Sample Rate" value={formatSampleRate(currentSong.sampleRate)} colors={colors} />
+            <DetailRow label="File Size" value={formatFileSize(currentSong.fileSize)} colors={colors} />
+            <DetailRow
+              label="Source"
+              value={
+                currentSong.source === 'local' ? 'Device Storage' :
+                currentSong.source === 'google-drive' ? 'Google Drive' : 'Imported'
+              }
+              colors={colors}
+            />
+            <DetailRow
+              label="Offline"
+              value={currentSong.isOffline ? 'Available' : 'Requires network'}
+              colors={colors}
+              isLast
+            />
+          </GlassSurface>
+        </AnimatedBorder>
 
         {/* Playback Details */}
-        <View style={[styles.detailsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={[styles.detailsCard, { marginHorizontal: spacing.lg }]}
+        >
           <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.md }]}>
             Playback Details
           </Text>
@@ -119,10 +140,15 @@ export default function AudioDetailsScreen() {
             colors={colors}
             isLast
           />
-        </View>
+        </GlassSurface>
 
         {/* Quality note */}
-        <View style={[styles.qualityNote, { backgroundColor: colors.accentSubtle, borderColor: colors.accent }]}>
+        <GlassSurface
+          variant="subtle"
+          borderRadius={radius.md}
+          showTopHighlight
+          style={[styles.qualityNote, { marginHorizontal: spacing.lg }]}
+        >
           <Ionicons
             name={isLossless ? 'checkmark-circle' : 'information-circle'}
             size={18}
@@ -134,7 +160,7 @@ export default function AudioDetailsScreen() {
               ? 'This file is lossless and plays at its original quality.'
               : 'This file uses lossy compression. Some audio detail may be reduced.'}
           </Text>
-        </View>
+        </GlassSurface>
 
         {/* Quality Badge */}
         <View style={styles.badgeRow}>
@@ -207,12 +233,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: spacing.lg,
   },
-  detailsCard: {
+  cardBorderWrapper: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.lg,
+  },
+  detailsCard: {
     padding: spacing.lg,
     borderRadius: radius.lg,
-    borderWidth: 0.5,
   },
   detailRow: {
     flexDirection: 'row',

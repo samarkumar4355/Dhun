@@ -21,9 +21,10 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { DhunWordmark } from '@/components/DhunWordmark';
 import { GoogleIcon } from '@/components/GoogleIcon';
+import { GlassSurface } from '@/components/GlassSurface';
 
 export default function SignUpScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, glass } = useTheme();
   const { signupWithEmail, signupWithGoogle } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -127,8 +128,8 @@ export default function SignUpScreen() {
           style={({ pressed }) => [
             styles.googleButton,
             {
-              backgroundColor: isDark ? '#232826' : '#FFFFFF',
-              borderColor: colors.border,
+              backgroundColor: glass.surfaceCard,
+              borderColor: glass.border,
               opacity: pressed ? 0.88 : 1,
             },
           ]}
@@ -160,7 +161,7 @@ export default function SignUpScreen() {
             <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
               Full Name (Optional)
             </Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.inputContainer, { backgroundColor: glass.surfaceSubtle, borderColor: glass.border }]}>
               <Ionicons name="person-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 value={name}
@@ -177,7 +178,7 @@ export default function SignUpScreen() {
             <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
               Email Address
             </Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.inputContainer, { backgroundColor: glass.surfaceSubtle, borderColor: glass.border }]}>
               <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 value={email}
@@ -196,7 +197,7 @@ export default function SignUpScreen() {
           <View
             style={[
               styles.noticeCard,
-              { backgroundColor: colors.surfaceSecondary, borderColor: colors.borderSubtle },
+              { backgroundColor: glass.surfaceSubtle, borderColor: glass.borderAccent },
             ]}
           >
             <Ionicons name="key-outline" size={20} color={colors.accent} style={{ marginTop: 2 }} />
@@ -263,11 +264,10 @@ export default function SignUpScreen() {
         onRequestClose={handleCompleteSignUp}
       >
         <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
-          <View
-            style={[
-              styles.modalCard,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
+          <GlassSurface
+            variant="elevated"
+            showTopHighlight
+            style={styles.modalCard}
           >
             <View style={[styles.modalBadge, { backgroundColor: colors.accentSubtle }]}>
               <Ionicons name="sparkles" size={24} color={colors.accent} />
@@ -363,7 +363,7 @@ export default function SignUpScreen() {
             >
               <Text style={styles.primaryButtonText}>Enter Dhun</Text>
             </Pressable>
-          </View>
+          </GlassSurface>
         </View>
       </Modal>
     </View>

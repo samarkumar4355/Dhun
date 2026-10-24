@@ -12,12 +12,14 @@ import { spacing, radius } from '@/theme/spacing';
 import { MoodCard } from '@/components/MoodCard';
 import { SongRow } from '@/components/SongRow';
 import { SectionHeader } from '@/components/SectionHeader';
+import { GlassSurface } from '@/components/GlassSurface';
 import { mockMoments } from '@/data/mockMoments';
 import { mockSongs } from '@/data/mockSongs';
 import { MoodSession } from '@/types/music';
+import { safeBack } from '@/utils/helpers';
 
 export default function MomentsScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { play, currentSong } = usePlayer();
@@ -40,10 +42,15 @@ export default function MomentsScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          <Pressable
+            onPress={() => safeBack(router, '/(tabs)/listen')}
+            hitSlop={12}
+            accessibilityLabel="Go back"
+            style={[styles.backButton, { backgroundColor: glass.surfaceSubtle, borderColor: glass.border }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
           </Pressable>
-          <View style={{ marginLeft: spacing.lg }}>
+          <View style={{ marginLeft: spacing.md }}>
             <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>Dhun Moments</Text>
             <Text style={[typography.bodySmall, { color: colors.textSecondary, fontStyle: 'italic' }]}>
               Your mood. Your music.
@@ -51,14 +58,16 @@ export default function MomentsScreen() {
           </View>
         </View>
 
-        {/* Indian phrase */}
-        <View style={styles.phraseContainer}>
-          <Text style={[styles.phrase, { color: colors.accent }]}>
-            Har Dhun, Ek Ehsaas.
-          </Text>
-          <Text style={[typography.caption, { color: colors.textMuted, marginTop: 4 }]}>
-            Every melody, a feeling.
-          </Text>
+        {/* Indian phrase banner */}
+        <View style={styles.phraseOuter}>
+          <GlassSurface variant="subtle" showTopHighlight style={styles.phraseContainer}>
+            <Text style={[styles.phrase, { color: colors.accent }]}>
+              Har Dhun, Ek Ehsaas.
+            </Text>
+            <Text style={[typography.caption, { color: colors.textMuted, marginTop: 4 }]}>
+              Every melody, a feeling.
+            </Text>
+          </GlassSurface>
         </View>
 
         {/* Featured moods — 2x2 grid */}
@@ -77,18 +86,20 @@ export default function MomentsScreen() {
         {/* Selected mood playlist */}
         {selectedMood && (
           <View style={styles.selectedSection}>
-            <SectionHeader title={selectedMood.title} showSeeAll={false} />
-            <Text style={[typography.bodySmall, { color: colors.textSecondary, paddingHorizontal: spacing.lg, marginBottom: spacing.md }]}>
-              {selectedMood.description}
-            </Text>
-            {moodSongs.map(song => (
-              <SongRow
-                key={song.id}
-                song={song}
-                onPress={() => play(song)}
-                isActive={currentSong?.id === song.id}
-              />
-            ))}
+            <GlassSurface variant="card" showTopHighlight style={styles.selectedGlassCard}>
+              <SectionHeader title={selectedMood.title} showSeeAll={false} />
+              <Text style={[typography.bodySmall, { color: colors.textSecondary, paddingHorizontal: spacing.lg, marginBottom: spacing.md }]}>
+                {selectedMood.description}
+              </Text>
+              {moodSongs.map(song => (
+                <SongRow
+                  key={song.id}
+                  song={song}
+                  onPress={() => play(song)}
+                  isActive={currentSong?.id === song.id}
+                />
+              ))}
+            </GlassSurface>
           </View>
         )}
 
@@ -122,15 +133,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
   },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   brandTitle: {
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  phraseOuter: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
   phraseContainer: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     alignItems: 'center',
+    borderRadius: radius.lg,
   },
   phrase: {
     fontSize: 18,
@@ -149,5 +173,11 @@ const styles = StyleSheet.create({
   },
   selectedSection: {
     marginTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  selectedGlassCard: {
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    overflow: 'hidden',
   },
 });

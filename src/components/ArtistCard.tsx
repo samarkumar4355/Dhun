@@ -6,22 +6,31 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { stringToColor, getInitials } from '@/utils/helpers';
-import { CometOrbit } from '@/components/CometOrbit';
+import { ArtistBorderRing } from '@/components/ArtistBorderRing';
 
 interface ArtistCardProps {
   name: string;
   artwork: string | null;
   onPress?: () => void;
   size?: number;
-  /** Show comet orbit animation (default: true for sizes >= 80) */
+  /** Show revolving border ring animation (default: true for sizes >= 80) */
+  showBorderRing?: boolean;
+  /** Legacy alias for backward compatibility */
   showComet?: boolean;
 }
 
-export function ArtistCard({ name, artwork, onPress, size = 100, showComet }: ArtistCardProps) {
-  const { colors } = useTheme();
+export function ArtistCard({
+  name,
+  artwork,
+  onPress,
+  size = 100,
+  showBorderRing,
+  showComet,
+}: ArtistCardProps) {
+  const { colors, glass } = useTheme();
 
-  // Only show comet on larger icons to avoid visual clutter
-  const shouldShowComet = showComet ?? size >= 80;
+  // Show revolving animated border ring on artist icons
+  const shouldShowRing = showBorderRing ?? showComet ?? size >= 80;
 
   const avatarContent = (
     <View
@@ -31,6 +40,8 @@ export function ArtistCard({ name, artwork, onPress, size = 100, showComet }: Ar
           width: size,
           height: size,
           backgroundColor: stringToColor(name),
+          borderColor: glass.borderHighlight,
+          borderWidth: 1,
         },
       ]}
     >
@@ -41,11 +52,27 @@ export function ArtistCard({ name, artwork, onPress, size = 100, showComet }: Ar
   );
 
   return (
-    <Pressable onPress={onPress} style={[styles.container, { width: shouldShowComet ? size + 18 : size }]}>
-      {shouldShowComet ? (
-        <CometOrbit iconSize={size} gap={4} duration={5.5} cometLength={0.14}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.container,
+        {
+          width: shouldShowRing ? size + 16 : size,
+          opacity: pressed ? 0.88 : 1,
+          transform: pressed ? [{ scale: 0.98 }] : [{ scale: 1 }],
+        },
+      ]}
+    >
+      {shouldShowRing ? (
+        <ArtistBorderRing
+          id={name.toLowerCase().replace(/[^a-z0-9]/g, '_')}
+          iconSize={size}
+          gap={3.5}
+          duration={5.5}
+          strokeWidth={2}
+        >
           {avatarContent}
-        </CometOrbit>
+        </ArtistBorderRing>
       ) : (
         avatarContent
       )}

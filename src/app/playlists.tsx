@@ -9,14 +9,15 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { usePlayer } from '@/services/PlayerProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
+import { GlassSurface } from '@/components/GlassSurface';
 import { mockPlaylists } from '@/data/mockPlaylists';
-import { stringToColor, getInitials } from '@/utils/helpers';
+import { stringToColor, getInitials, safeBack } from '@/utils/helpers';
 import { Playlist } from '@/types/music';
 
 type PlaylistTab = 'My Playlists' | 'Shared' | 'Auto';
 
 export default function PlaylistsScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<PlaylistTab>('My Playlists');
@@ -73,7 +74,7 @@ export default function PlaylistsScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+          <Pressable onPress={() => safeBack(router, '/(tabs)/library')} hitSlop={12} accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </Pressable>
           <Text style={[typography.h1, { color: colors.textPrimary, flex: 1, marginLeft: spacing.lg }]}>
@@ -114,6 +115,7 @@ export default function PlaylistsScreen() {
               key={playlist.id}
               playlist={playlist}
               colors={colors}
+              glass={glass}
               onPress={() => {}}
               onDelete={() => handleDelete(playlist.id, playlist.name)}
             />
@@ -137,11 +139,13 @@ export default function PlaylistsScreen() {
 function PlaylistRow({
   playlist,
   colors,
+  glass,
   onPress,
   onDelete,
 }: {
   playlist: Playlist;
   colors: ReturnType<typeof useTheme>['colors'];
+  glass: ReturnType<typeof useTheme>['glass'];
   onPress: () => void;
   onDelete: () => void;
 }) {
@@ -150,14 +154,22 @@ function PlaylistRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.playlistRow,
-        { opacity: pressed ? 0.7 : 1 },
+        {
+          opacity: pressed ? 0.88 : 1,
+          transform: pressed ? [{ scale: 0.99 }] : [{ scale: 1 }],
+        },
       ]}
       accessibilityLabel={`${playlist.name}, ${playlist.songIds.length} songs`}
     >
       <View
         style={[
           styles.playlistArtwork,
-          { backgroundColor: stringToColor(playlist.name), borderRadius: radius.md },
+          {
+            backgroundColor: stringToColor(playlist.name),
+            borderRadius: radius.md,
+            borderColor: glass.borderHighlight,
+            borderWidth: 1,
+          },
         ]}
       >
         <Text style={styles.playlistInitials}>{getInitials(playlist.name)}</Text>

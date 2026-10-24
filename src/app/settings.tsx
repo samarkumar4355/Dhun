@@ -9,8 +9,9 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SettingsRow } from '@/components/SettingsRow';
+import { GlassSurface } from '@/components/GlassSurface';
 import { ThemeMode } from '@/types/music';
-import { stringToColor, getInitials } from '@/utils/helpers';
+import { stringToColor, getInitials, safeBack } from '@/utils/helpers';
 import { useAuth } from '@/services/AuthProvider';
 
 const themeLabels: Record<ThemeMode, string> = {
@@ -88,15 +89,18 @@ export default function SettingsScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+          <Pressable onPress={() => safeBack(router, '/(tabs)/listen')} hitSlop={12} accessibilityLabel="Go back">
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </Pressable>
           <Text style={[typography.h2, { color: colors.textPrimary, marginLeft: spacing.lg }]}>Settings</Text>
         </View>
 
         {/* Profile Card */}
-        <Pressable
-          style={[styles.profileCard, { backgroundColor: colors.surface }]}
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={styles.profileCard}
           onPress={() => {
             if (!isAuthenticated) router.push('/login');
             else showPrototypeAlert('Profile details');
@@ -130,10 +134,15 @@ export default function SettingsScreen() {
             size={18}
             color={colors.textMuted}
           />
-        </Pressable>
+        </GlassSurface>
 
         {/* Account Group */}
-        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={styles.settingsGroup}
+        >
           {user?.provider === 'email' ? (
             <>
               <SettingsRow
@@ -152,10 +161,15 @@ export default function SettingsScreen() {
             value={isAuthenticated ? 'Active' : ''}
             onPress={handleAuthAction}
           />
-        </View>
+        </GlassSurface>
 
         {/* Settings sections */}
-        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={styles.settingsGroup}
+        >
           <SettingsRow
             icon="headset"
             label="Audio Quality"
@@ -190,10 +204,15 @@ export default function SettingsScreen() {
             value={themeLabels[themeMode]}
             onPress={handleThemeChange}
           />
-        </View>
+        </GlassSurface>
 
         {/* Second group */}
-        <View style={[styles.settingsGroup, { backgroundColor: colors.surface }]}>
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={styles.settingsGroup}
+        >
           <SettingsRow
             icon="help-circle"
             label="Help & Support"
@@ -211,7 +230,7 @@ export default function SettingsScreen() {
               )
             }
           />
-        </View>
+        </GlassSurface>
 
         {/* Theme info */}
         <View style={styles.themeInfo}>

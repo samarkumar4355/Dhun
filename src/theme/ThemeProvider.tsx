@@ -10,10 +10,12 @@ import {
   getColorsForTimePeriod,
   getCurrentTimePeriod,
 } from './colors';
+import { GlassThemeTokens, darkGlassTokens, lightGlassTokens } from './glass';
 import { ThemeMode, TimePeriod } from '@/types/music';
 
 interface ThemeContextValue {
   colors: DhunColors;
+  glass: GlassThemeTokens;
   themeMode: ThemeMode;
   timePeriod: TimePeriod;
   isDark: boolean;
@@ -22,6 +24,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue>({
   colors: darkColors,
+  glass: darkGlassTokens,
   themeMode: 'auto',
   timePeriod: 'night',
   isDark: true,
@@ -62,7 +65,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
   }, [updateTimePeriod]);
 
-  const { colors, isDark } = useMemo(() => {
+  const { colors, glass, isDark } = useMemo(() => {
     let resolvedColors: DhunColors;
     let resolvedIsDark: boolean;
 
@@ -86,12 +89,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         break;
     }
 
-    return { colors: resolvedColors, isDark: resolvedIsDark };
+    const resolvedGlass = resolvedIsDark ? darkGlassTokens : lightGlassTokens;
+    return { colors: resolvedColors, glass: resolvedGlass, isDark: resolvedIsDark };
   }, [themeMode, timePeriod, systemScheme]);
 
   const value = useMemo(
-    () => ({ colors, themeMode, timePeriod, isDark, setThemeMode }),
-    [colors, themeMode, timePeriod, isDark]
+    () => ({ colors, glass, themeMode, timePeriod, isDark, setThemeMode }),
+    [colors, glass, themeMode, timePeriod, isDark]
   );
 
   return (

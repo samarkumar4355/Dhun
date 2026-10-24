@@ -37,7 +37,7 @@ interface MoodCardProps {
 }
 
 export function MoodCard({ mood, onPress, large = false }: MoodCardProps) {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const gradient = moodGradients[mood.moodType];
 
   return (
@@ -47,12 +47,23 @@ export function MoodCard({ mood, onPress, large = false }: MoodCardProps) {
         large ? styles.largCard : styles.card,
         {
           backgroundColor: gradient[0],
-          opacity: pressed ? 0.85 : 1,
+          borderColor: glass.border,
+          borderWidth: 1,
+          opacity: pressed ? 0.88 : 1,
+          transform: pressed ? [{ scale: 0.98 }] : [{ scale: 1 }],
         },
       ]}
       accessibilityLabel={`${mood.title} mood session`}
       accessibilityRole="button"
     >
+      {/* Top highlight sheen line */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.sheenLine,
+          { backgroundColor: glass.borderHighlight },
+        ]}
+      />
       <View style={styles.cardContent}>
         <Ionicons
           name={moodIcons[mood.moodType]}
@@ -91,6 +102,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
     justifyContent: 'flex-end',
     overflow: 'hidden',
+    position: 'relative',
   },
   largCard: {
     flex: 1,
@@ -101,6 +113,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     overflow: 'hidden',
     minWidth: 150,
+    position: 'relative',
+  },
+  sheenLine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 0.75,
   },
   cardContent: {
     justifyContent: 'flex-end',

@@ -11,13 +11,15 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { QualityBadge } from '@/components/QualityBadge';
 import { FlipLyricsCard } from '@/components/FlipLyricsCard';
-import { formatDuration } from '@/utils/helpers';
+import { GlassSurface } from '@/components/GlassSurface';
+import { AnimatedBorder } from '@/components/AnimatedBorder';
+import { formatDuration, safeBack } from '@/utils/helpers';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ARTWORK_SIZE = Math.min(SCREEN_WIDTH - 64, 340);
 
 export default function PlayerScreen() {
-  const { colors } = useTheme();
+  const { colors, glass, isDark } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const {
@@ -67,7 +69,7 @@ export default function PlayerScreen() {
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Close player">
+        <Pressable onPress={() => safeBack(router, '/(tabs)/listen')} hitSlop={12} accessibilityLabel="Close player">
           <Ionicons name="chevron-down" size={28} color={colors.textPrimary} />
         </Pressable>
         <Text style={[typography.metadata, { color: colors.textSecondary }]}>NOW PLAYING</Text>
@@ -80,18 +82,38 @@ export default function PlayerScreen() {
         </Pressable>
       </View>
 
-      {/* Artwork / Lyrics Flip Card */}
+      {/* Artwork / Lyrics Flip Card with ambient glow & travelling border */}
       <View style={styles.artworkContainer}>
-        <FlipLyricsCard
-          size={ARTWORK_SIZE}
-          title={currentSong.title}
-          artistName={currentSong.artistName}
-          artwork={currentSong.artwork}
-          lyrics={currentSong.lyrics}
-          songId={currentSong.id}
-          showLyrics={showLyrics}
-          onToggle={handleFlipToggle}
+        {/* Soft static ambient gold lighting behind hero artwork */}
+        <View
+          pointerEvents="none"
+          style={[
+            styles.ambientHalo,
+            {
+              backgroundColor: isDark
+                ? 'rgba(215, 166, 90, 0.14)'
+                : 'rgba(196, 145, 59, 0.10)',
+            },
+          ]}
         />
+        <AnimatedBorder
+          id="player_artwork"
+          active={isPlaying}
+          borderRadius={radius['2xl']}
+          duration={7.5}
+          strokeWidth={1.4}
+        >
+          <FlipLyricsCard
+            size={ARTWORK_SIZE}
+            title={currentSong.title}
+            artistName={currentSong.artistName}
+            artwork={currentSong.artwork}
+            lyrics={currentSong.lyrics}
+            songId={currentSong.id}
+            showLyrics={showLyrics}
+            onToggle={handleFlipToggle}
+          />
+        </AnimatedBorder>
       </View>
 
       {/* Song Info */}
@@ -167,7 +189,17 @@ export default function PlayerScreen() {
 
         <Pressable
           onPress={isPlaying ? pause : resume}
-          style={[styles.playButton, { backgroundColor: colors.accent }]}
+          style={[
+            styles.playButton,
+            { backgroundColor: colors.accent },
+            isPlaying && {
+              shadowColor: colors.accent,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
+              elevation: 6,
+            },
+          ]}
           accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
         >
           <Ionicons
@@ -194,10 +226,12 @@ export default function PlayerScreen() {
         </Pressable>
       </View>
 
-      {/* Audio Details Link */}
-      <Pressable
+      {/* Audio Details Glass Card Link */}
+      <GlassSurface
+        variant="card"
+        showTopHighlight
         onPress={() => router.push('/audio-details')}
-        style={[styles.audioDetailsBar, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        style={styles.audioDetailsBar}
         accessibilityLabel="Audio details"
       >
         <Ionicons name="analytics" size={18} color={colors.accent} />
@@ -210,7 +244,7 @@ export default function PlayerScreen() {
           sampleRate={currentSong.sampleRate}
         />
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} style={{ marginLeft: spacing.sm }} />
-      </Pressable>
+      </GlassSurface>
     </View>
   );
 }
@@ -232,6 +266,15 @@ const styles = StyleSheet.create({
     // Height is fixed to ARTWORK_SIZE to prevent layout jumps during flip
     height: ARTWORK_SIZE + spacing.xl * 2,
     justifyContent: 'center',
+    position: 'relative',
+  },
+  ambientHalo: {
+    position: 'absolute',
+    width: ARTWORK_SIZE * 0.85,
+    height: ARTWORK_SIZE * 0.85,
+    borderRadius: (ARTWORK_SIZE * 0.85) / 2,
+    alignSelf: 'center',
+    zIndex: 0,
   },
   songInfo: {
     paddingVertical: spacing.sm,

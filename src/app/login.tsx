@@ -22,7 +22,7 @@ import { DhunWordmark } from '@/components/DhunWordmark';
 import { GoogleIcon } from '@/components/GoogleIcon';
 
 export default function LoginScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, glass } = useTheme();
   const { loginWithEmail, loginWithGoogle, recentGeneratedPassword, recentEmail, getGeneratedPassword } =
     useAuth();
   const router = useRouter();
@@ -135,8 +135,8 @@ export default function LoginScreen() {
           style={({ pressed }) => [
             styles.googleButton,
             {
-              backgroundColor: isDark ? '#232826' : '#FFFFFF',
-              borderColor: colors.border,
+              backgroundColor: glass.surfaceCard,
+              borderColor: glass.border,
               opacity: pressed ? 0.88 : 1,
             },
           ]}
@@ -168,7 +168,7 @@ export default function LoginScreen() {
             <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
               Email Address
             </Text>
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.inputContainer, { backgroundColor: glass.surfaceSubtle, borderColor: glass.border }]}>
               <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 value={email}
@@ -197,7 +197,7 @@ export default function LoginScreen() {
               ) : null}
             </View>
 
-            <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.inputContainer, { backgroundColor: glass.surfaceSubtle, borderColor: glass.border }]}>
               <Ionicons name="key-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
               <TextInput
                 value={password}
@@ -234,8 +234,8 @@ export default function LoginScreen() {
             style={({ pressed }) => [
               styles.demoCard,
               {
-                backgroundColor: colors.surfaceSecondary,
-                borderColor: colors.borderSubtle,
+                backgroundColor: glass.surfaceSubtle,
+                borderColor: glass.borderAccent,
                 opacity: pressed ? 0.85 : 1,
               },
             ]}

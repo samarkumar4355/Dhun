@@ -17,16 +17,29 @@ interface SongRowProps {
 }
 
 export function SongRow({ song, onPress, showArtwork = true, isActive = false }: SongRowProps) {
-  const { colors } = useTheme();
+  const { colors, glass, isDark } = useTheme();
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.container,
+        isActive
+          ? {
+              backgroundColor: glass.surfaceSubtle,
+              borderColor: glass.borderAccent,
+              borderWidth: 1,
+              borderRadius: radius.md,
+              marginHorizontal: spacing.sm,
+            }
+          : {
+              backgroundColor: pressed ? glass.surfaceSubtle : 'transparent',
+              borderColor: 'transparent',
+              borderWidth: 1,
+            },
         {
-          backgroundColor: pressed ? colors.surfaceSecondary : 'transparent',
-          opacity: pressed ? 0.8 : 1,
+          opacity: pressed ? 0.88 : 1,
+          transform: pressed ? [{ scale: 0.995 }] : [{ scale: 1 }],
         },
       ]}
       accessibilityLabel={`${song.title} by ${song.artistName}`}
@@ -36,7 +49,12 @@ export function SongRow({ song, onPress, showArtwork = true, isActive = false }:
         <View
           style={[
             styles.artwork,
-            { backgroundColor: stringToColor(song.title), borderRadius: radius.sm },
+            {
+              backgroundColor: stringToColor(song.title),
+              borderRadius: radius.sm,
+              borderColor: isActive ? colors.accent : glass.border,
+              borderWidth: isActive ? 1.5 : 0.5,
+            },
           ]}
         >
           <Text style={styles.artworkText}>{getInitials(song.title)}</Text>

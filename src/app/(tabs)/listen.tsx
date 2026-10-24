@@ -16,6 +16,8 @@ import { ArtistCard } from '@/components/ArtistCard';
 import { SongRow } from '@/components/SongRow';
 import { MoodCard } from '@/components/MoodCard';
 import { MiniPlayer } from '@/components/MiniPlayer';
+import { GlassSurface } from '@/components/GlassSurface';
+import { AnimatedBorder } from '@/components/AnimatedBorder';
 import { mockSongs } from '@/data/mockSongs';
 import { mockAlbums } from '@/data/mockAlbums';
 import { mockArtists } from '@/data/mockArtists';
@@ -25,7 +27,7 @@ import { getGreeting, getTimePhraseHindi, stringToColor, getInitials } from '@/u
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ListenScreen() {
-  const { colors, timePeriod } = useTheme();
+  const { colors, glass, isDark } = useTheme();
   const { currentSong, play } = usePlayer();
   const { user } = useAuth();
   const router = useRouter();
@@ -74,23 +76,36 @@ export default function ListenScreen() {
           </View>
         </View>
 
-        {/* Dhun Moments Hero Banner */}
-        <Pressable
-          onPress={() => router.push('/moments')}
-          style={[styles.heroBanner, { backgroundColor: colors.surface }]}
+        {/* Dhun Moments Hero Banner with travelling border highlight */}
+        <AnimatedBorder
+          id="hero_moments"
+          borderRadius={radius.xl}
+          style={styles.heroBorderWrapper}
+          active
+          duration={7}
+          strokeWidth={1.5}
         >
-          <View style={[styles.heroOverlay, { backgroundColor: '#2C3E50' }]}>
-            <View style={styles.heroContent}>
-              <Text style={[typography.h2, { color: '#FFFFFF' }]}>Dhun Moments</Text>
-              <Text style={[typography.body, { color: 'rgba(255,255,255,0.8)', marginTop: 4 }]}>
-                Curated from your collection
-              </Text>
-              <View style={[styles.exploreButton, { backgroundColor: colors.accent }]}>
-                <Text style={[typography.label, { color: '#1A1714' }]}>Explore</Text>
+          <GlassSurface
+            variant="card"
+            borderRadius={radius.xl}
+            showTopHighlight
+            showAmbientGlow
+            onPress={() => router.push('/moments')}
+            style={styles.heroBanner}
+          >
+            <View style={[styles.heroOverlay, { backgroundColor: isDark ? 'rgba(38, 50, 56, 0.75)' : 'rgba(235, 240, 242, 0.85)' }]}>
+              <View style={styles.heroContent}>
+                <Text style={[typography.h2, { color: colors.textPrimary }]}>Dhun Moments</Text>
+                <Text style={[typography.body, { color: colors.textSecondary, marginTop: 4 }]}>
+                  Curated from your personal collection
+                </Text>
+                <View style={[styles.exploreButton, { backgroundColor: colors.accent }]}>
+                  <Text style={[typography.label, { color: '#1A1714' }]}>Explore</Text>
+                </View>
               </View>
             </View>
-          </View>
-        </Pressable>
+          </GlassSurface>
+        </AnimatedBorder>
 
         {/* Continue Listening */}
         {currentSong && (
@@ -107,48 +122,56 @@ export default function ListenScreen() {
         {/* Your Music */}
         <SectionHeader title="Your Music" showSeeAll={false} />
         <View style={styles.quickCards}>
-          <Pressable
-            style={[styles.quickCard, { backgroundColor: colors.surface }]}
+          <GlassSurface
+            variant="card"
+            style={styles.quickCard}
             onPress={() => router.push('/(tabs)/library')}
+            showTopHighlight
           >
             <Ionicons name="musical-notes" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Recently Added</Text>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>342 songs</Text>
             </View>
-          </Pressable>
-          <Pressable
-            style={[styles.quickCard, { backgroundColor: colors.surface }]}
+          </GlassSurface>
+          <GlassSurface
+            variant="card"
+            style={styles.quickCard}
             onPress={() => router.push('/(tabs)/library')}
+            showTopHighlight
           >
             <Ionicons name="heart" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Liked Songs</Text>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{likedSongs.length} songs</Text>
             </View>
-          </Pressable>
+          </GlassSurface>
         </View>
         <View style={styles.quickCards}>
-          <Pressable
-            style={[styles.quickCard, { backgroundColor: colors.surface }]}
+          <GlassSurface
+            variant="card"
+            style={styles.quickCard}
             onPress={() => router.push('/(tabs)/library')}
+            showTopHighlight
           >
             <Ionicons name="disc" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Albums</Text>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{mockAlbums.length} albums</Text>
             </View>
-          </Pressable>
-          <Pressable
-            style={[styles.quickCard, { backgroundColor: colors.surface }]}
+          </GlassSurface>
+          <GlassSurface
+            variant="card"
+            style={styles.quickCard}
             onPress={() => router.push('/artists')}
+            showTopHighlight
           >
             <Ionicons name="people" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Artists</Text>
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{mockArtists.length} artists</Text>
             </View>
-          </Pressable>
+          </GlassSurface>
         </View>
 
         {/* Recently Added */}
@@ -165,6 +188,27 @@ export default function ListenScreen() {
               artistName={item.artistName}
               artwork={item.artwork}
               onPress={() => play(mockSongs.find(s => s.albumId === item.id) || mockSongs[0])}
+            />
+          )}
+          scrollEnabled={false}
+          style={{ overflow: 'visible' }}
+        />
+
+        {/* Featured Artists */}
+        <SectionHeader title="Featured Artists" onSeeAll={() => router.push('/artists')} />
+        <FlatList
+          data={mockArtists.slice(0, 5)}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.xs }}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <ArtistCard
+              name={item.name}
+              artwork={null}
+              size={80}
+              showBorderRing={true}
+              onPress={() => router.push('/artists')}
             />
           )}
           scrollEnabled={false}
@@ -196,12 +240,14 @@ export default function ListenScreen() {
         {/* Quick filters */}
         <View style={styles.filterRow}>
           {['Lossless', 'Offline', 'Yours'].map(filter => (
-            <View
+            <GlassSurface
               key={filter}
-              style={[styles.filterChip, { borderColor: colors.border }]}
+              variant="subtle"
+              borderRadius={radius.full}
+              style={styles.filterChip}
             >
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{filter}</Text>
-            </View>
+            </GlassSurface>
           ))}
         </View>
       </ScrollView>
@@ -248,11 +294,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  heroBanner: {
+  heroBorderWrapper: {
     marginHorizontal: spacing.lg,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
     marginBottom: spacing.sm,
+  },
+  heroBanner: {
+    overflow: 'hidden',
   },
   heroOverlay: {
     padding: spacing['2xl'],

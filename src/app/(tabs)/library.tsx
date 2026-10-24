@@ -11,6 +11,7 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SongRow } from '@/components/SongRow';
 import { MiniPlayer } from '@/components/MiniPlayer';
+import { GlassSurface } from '@/components/GlassSurface';
 import { mockSongs } from '@/data/mockSongs';
 import { mockAlbums } from '@/data/mockAlbums';
 import { mockArtists } from '@/data/mockArtists';
@@ -21,7 +22,7 @@ type LibraryTab = 'All' | 'Artists' | 'Albums' | 'Genres' | 'Folders';
 const tabs: LibraryTab[] = ['All', 'Artists', 'Albums', 'Genres', 'Folders'];
 
 export default function LibraryScreen() {
-  const { colors } = useTheme();
+  const { colors, glass } = useTheme();
   const { currentSong, play } = usePlayer();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -76,49 +77,61 @@ export default function LibraryScreen() {
         {/* Library sections */}
         {activeTab === 'All' && (
           <>
-            {/* Collection rows */}
-            <LibraryRow
-              icon="list"
-              label="Playlists"
-              count={`${mockPlaylists.length} playlists`}
-              onPress={() => router.push('/playlists')}
-              colors={colors}
-            />
-            <LibraryRow
-              icon="people"
-              label="Artists"
-              count={`${mockArtists.length} artists`}
-              onPress={() => router.push('/artists')}
-              colors={colors}
-            />
-            <LibraryRow
-              icon="disc"
-              label="Albums"
-              count={`${mockAlbums.length} albums`}
-              onPress={() => router.push('/(tabs)/library')}
-              colors={colors}
-            />
-            <LibraryRow
-              icon="musical-notes"
-              label="Songs"
-              count={`${mockSongs.length} songs`}
-              onPress={() => {}}
-              colors={colors}
-            />
-            <LibraryRow
-              icon="pricetags"
-              label="Genres"
-              count="12 genres"
-              onPress={() => {}}
-              colors={colors}
-            />
-            <LibraryRow
-              icon="folder"
-              label="Folders"
-              count="8 folders"
-              onPress={() => {}}
-              colors={colors}
-            />
+            {/* Frosted Glass Collection Card */}
+            <GlassSurface
+              variant="card"
+              borderRadius={radius.lg}
+              showTopHighlight
+              style={styles.collectionCard}
+            >
+              <LibraryRow
+                icon="list"
+                label="Playlists"
+                count={`${mockPlaylists.length} playlists`}
+                onPress={() => router.push('/playlists')}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="people"
+                label="Artists"
+                count={`${mockArtists.length} artists`}
+                onPress={() => router.push('/artists')}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="disc"
+                label="Albums"
+                count={`${mockAlbums.length} albums`}
+                onPress={() => router.push('/(tabs)/library')}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="musical-notes"
+                label="Songs"
+                count={`${mockSongs.length} songs`}
+                onPress={() => {}}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="pricetags"
+                label="Genres"
+                count="12 genres"
+                onPress={() => {}}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="folder"
+                label="Folders"
+                count="8 folders"
+                onPress={() => {}}
+                colors={colors}
+              />
+            </GlassSurface>
 
             {/* Quick Filters */}
             <View style={styles.filterSection}>
@@ -127,14 +140,16 @@ export default function LibraryScreen() {
               </Text>
               <View style={styles.filterRow}>
                 {filters.map(filter => (
-                  <Pressable
+                  <GlassSurface
                     key={filter}
+                    variant={activeFilter === filter ? 'card' : 'subtle'}
+                    borderRadius={radius.full}
                     onPress={() => setActiveFilter(activeFilter === filter ? null : filter)}
                     style={[
                       styles.filterChip,
-                      {
-                        backgroundColor: activeFilter === filter ? colors.accent : 'transparent',
-                        borderColor: activeFilter === filter ? colors.accent : colors.border,
+                      activeFilter === filter && {
+                        borderColor: colors.accent,
+                        backgroundColor: glass.borderAccent,
                       },
                     ]}
                   >
@@ -142,13 +157,14 @@ export default function LibraryScreen() {
                       style={[
                         typography.caption,
                         {
-                          color: activeFilter === filter ? colors.background : colors.textSecondary,
+                          color: activeFilter === filter ? colors.accentWarm : colors.textSecondary,
+                          fontWeight: activeFilter === filter ? '600' : '400',
                         },
                       ]}
                     >
                       {filter}
                     </Text>
-                  </Pressable>
+                  </GlassSurface>
                 ))}
               </View>
             </View>
@@ -287,6 +303,14 @@ const styles = StyleSheet.create({
   tab: {
     paddingVertical: spacing.sm,
     borderBottomWidth: 2,
+  },
+  collectionCard: {
+    marginHorizontal: spacing.lg,
+    overflow: 'hidden',
+  },
+  rowDivider: {
+    height: 0.5,
+    marginLeft: spacing.lg + 22 + spacing.lg,
   },
   libraryRow: {
     flexDirection: 'row',
