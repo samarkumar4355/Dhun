@@ -47,6 +47,14 @@
         {
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "-dontwarn expo.modules.core.interfaces.services.KeepAwakeManager\n-dontwarn expo.modules.kotlin.types.**\n-dontwarn expo.modules.av.**\n-keep class expo.modules.av.** { *; }"
+          }
+        }
       ]
     ],
     "experiments": {
