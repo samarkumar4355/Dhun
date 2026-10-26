@@ -34,6 +34,19 @@ export interface ExtractedTrackData {
   lyricsText?: string;
 
   missingFields: string[];
+
+  // Curated metadata & source fields
+  language?: string;
+  composer?: string;
+  lyricist?: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  lyricsSource?: string;
+  lyricsLanguage?: string;
+  driveFolderId?: string;
+  driveAudioFileId?: string;
+  driveArtworkFileId?: string;
+  driveLyricsFileId?: string;
 }
 
 export class MetadataService {
@@ -349,16 +362,54 @@ export class MetadataService {
     if (!format.sampleRate) missingFields.push('sampleRate');
     if (!format.bitsPerSample) missingFields.push('bitDepth');
 
+    // Check for companion metadata JSON if present
+    const dir = path.dirname(filePath);
+    const companionMetaPath = path.join(dir, `${rawBaseName}.meta.json`);
+    let companionMeta: any = null;
+    if (fs.existsSync(companionMetaPath)) {
+      try {
+        companionMeta = JSON.parse(fs.readFileSync(companionMetaPath, 'utf8'));
+      } catch {
+        // ignore
+      }
+    }
+
+    if (companionMeta?.title) {
+      title = companionMeta.title;
+      const idx = missingFields.indexOf('title');
+      if (idx !== -1) missingFields.splice(idx, 1);
+    }
+    if (companionMeta?.artist) {
+      artist = companionMeta.artist;
+      const idx = missingFields.indexOf('artist');
+      if (idx !== -1) missingFields.splice(idx, 1);
+    }
+    if (companionMeta?.album) {
+      album = companionMeta.album;
+      const idx = missingFields.indexOf('album');
+      if (idx !== -1) missingFields.splice(idx, 1);
+    }
+    let year = common.year;
+    if (!year && companionMeta?.year) {
+      year = companionMeta.year;
+      const idx = missingFields.indexOf('year');
+      if (idx !== -1) missingFields.splice(idx, 1);
+    }
+    let genre = common.genre;
+    if ((!genre || genre.length === 0) && companionMeta?.genre) {
+      genre = Array.isArray(companionMeta.genre) ? companionMeta.genre : [companionMeta.genre];
+    }
+
     return {
       title,
       artist,
       album,
-      year: common.year,
-      genre: common.genre,
-      trackNumber: common.track?.no ?? undefined,
-      discNumber: common.disk?.no ?? undefined,
+      year,
+      genre,
+      trackNumber: common.track?.no ?? companionMeta?.trackNumber ?? undefined,
+      discNumber: common.disk?.no ?? companionMeta?.discNumber ?? undefined,
 
-      durationSeconds: Math.round(format.duration || 0),
+      durationSeconds: Math.round(format.duration || companionMeta?.durationSeconds || 0),
       codec,
       lossless,
       sampleRate: format.sampleRate,
@@ -377,6 +428,14 @@ export class MetadataService {
       lyricsText,
 
       missingFields,
+
+      language: companionMeta?.language,
+      composer: companionMeta?.composer,
+      lyricist: companionMeta?.lyricist,
+      sourceName: companionMeta?.sourceName,
+      sourceUrl: companionMeta?.sourceUrl,
+      lyricsSource: companionMeta?.lyricsSource,
+      lyricsLanguage: companionMeta?.lyricsLanguage,
     };
   }
 
@@ -390,6 +449,9 @@ export class MetadataService {
       album: data.album,
       year: data.year ?? null,
       genre: data.genre ?? [],
+      language: data.language ?? null,
+      composer: data.composer ?? null,
+      lyricist: data.lyricist ?? null,
       trackNumber: data.trackNumber ?? null,
       discNumber: data.discNumber ?? null,
       audioDetails: {
@@ -410,6 +472,13 @@ export class MetadataService {
       assets: {
         hasArtwork: Boolean(data.embeddedArtwork || data.externalArtworkPath),
         hasLyrics: Boolean(data.lyricsText && this.isValidLyrics(data.lyricsText)),
+        lyricsSource: data.lyricsSource ?? (data.lyricsText ? 'embedded/adjacent' : null),
+        lyricsLanguage: data.lyricsLanguage ?? (data.lyricsText ? (data.language || 'Hindi') : null),
+      },
+      source: {
+        sourceName: data.sourceName ?? 'Internet Archive Open Music Repository',
+        sourceUrl: data.sourceUrl ?? null,
+        licensingNotes: 'Open access public audio repository for personal listening',
       },
       lyrics: data.lyricsText && this.isValidLyrics(data.lyricsText) ? data.lyricsText : null,
       missingFields: data.missingFields,

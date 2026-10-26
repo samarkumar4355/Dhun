@@ -117,6 +117,9 @@ const TrackSchema: Schema = new Schema(
   }
 );
 
-TrackSchema.index({ title: 'text', artist: 'text', album: 'text' });
+TrackSchema.index(
+  { title: 'text', artist: 'text', album: 'text' },
+  { language_override: 'none' }
+);
 
 export const Track = mongoose.models.Track || mongoose.model<ITrack>('Track', TrackSchema);

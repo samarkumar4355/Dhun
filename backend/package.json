@@ -7,11 +7,13 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "test": "tsx --test test/importer.test.ts test/catalog.test.ts test/auth.test.ts test/playback.test.ts test/library-sync.test.ts",
+    "test": "tsx --test test/folder-organization.test.ts test/importer.test.ts test/catalog.test.ts test/auth.test.ts test/playback.test.ts test/library-sync.test.ts",
     "test:importer": "tsx test/importer.test.ts",
     "test:drive": "tsx src/scripts/testDriveConnection.ts",
     "import:dry-run": "tsx src/scripts/runDryRun.ts",
-    "import:upload": "tsx src/scripts/runLiveImport.ts"
+    "import:upload": "tsx src/scripts/runLiveImport.ts",
+    "ingest:dry-run": "tsx src/scripts/ingestIndianTracks.ts --dry-run",
+    "ingest:live": "tsx src/scripts/ingestIndianTracks.ts --yes"
   },
   "keywords": [
     "music",

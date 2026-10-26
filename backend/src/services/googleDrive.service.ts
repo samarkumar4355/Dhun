@@ -17,6 +17,7 @@ export interface DriveFileInfo {
   mimeType?: string | null;
   size?: string | null;
   md5Checksum?: string | null;
+  parents?: string[] | null;
 }
 
 /**
@@ -152,6 +153,10 @@ export class GoogleDriveService {
     mimeType: string;
     parentFolderId: string;
   }): Promise<DriveFileInfo> {
+    if (!options.parentFolderId) {
+      throw new Error(`[Google Drive Error] Cannot upload "${options.fileName}" without explicit parentFolderId.`);
+    }
+
     const drive = await this.getClient();
     const localStats = fs.statSync(options.filePath);
     const localSize = localStats.size;
@@ -160,7 +165,7 @@ export class GoogleDriveService {
     // Check if file already exists in target folder
     const existing = await drive.files.list({
       q: `'${options.parentFolderId}' in parents and name = '${options.fileName.replace(/'/g, "\\'")}' and trashed = false`,
-      fields: 'files(id, name, mimeType, size, md5Checksum)',
+      fields: 'files(id, name, mimeType, size, md5Checksum, parents)',
       spaces: 'drive',
     });
 
@@ -180,6 +185,7 @@ export class GoogleDriveService {
           mimeType: file.mimeType,
           size: file.size,
           md5Checksum: file.md5Checksum,
+          parents: file.parents,
         };
       }
 
@@ -203,12 +209,12 @@ export class GoogleDriveService {
         parents: [options.parentFolderId],
       },
       media,
-      fields: 'id, name, mimeType, size, md5Checksum',
+      fields: 'id, name, mimeType, size, md5Checksum, parents',
     });
 
     const uploadedId = response.data.id as string;
 
-    // Post-upload verification: verify file size and compare Drive MD5 with locally computed MD5
+    // Post-upload verification: verify file size, MD5, and parent folder ID
     const verified = await this.verifyFile(uploadedId);
     if (verified.size && Number.parseInt(verified.size, 10) !== localSize) {
       throw new Error(
@@ -224,6 +230,12 @@ export class GoogleDriveService {
       );
     }
 
+    if (!verified.parents || !verified.parents.includes(options.parentFolderId)) {
+      throw new Error(
+        `[Parent Verification Error] Uploaded file "${options.fileName}" parent [${verified.parents?.join(', ')}] does not match required parentFolderId "${options.parentFolderId}".`
+      );
+    }
+
     return verified;
   }
 
@@ -236,11 +248,15 @@ export class GoogleDriveService {
     fileName: string;
     parentFolderId: string;
   }): Promise<DriveFileInfo> {
+    if (!options.parentFolderId) {
+      throw new Error(`[Google Drive Error] Cannot upload JSON "${options.fileName}" without explicit parentFolderId.`);
+    }
+
     const drive = await this.getClient();
 
     const existing = await drive.files.list({
       q: `'${options.parentFolderId}' in parents and name = '${options.fileName.replace(/'/g, "\\'")}' and trashed = false`,
-      fields: 'files(id, name, mimeType, size)',
+      fields: 'files(id, name, mimeType, size, parents)',
       spaces: 'drive',
     });
 
@@ -251,6 +267,7 @@ export class GoogleDriveService {
         name: file.name as string,
         mimeType: file.mimeType,
         size: file.size,
+        parents: file.parents,
       };
     }
 
@@ -266,25 +283,27 @@ export class GoogleDriveService {
         parents: [options.parentFolderId],
       },
       media,
-      fields: 'id, name, mimeType, size',
+      fields: 'id, name, mimeType, size, parents',
     });
 
-    return {
-      id: response.data.id as string,
-      name: response.data.name as string,
-      mimeType: response.data.mimeType,
-      size: response.data.size,
-    };
+    const verified = await this.verifyFile(response.data.id as string);
+    if (!verified.parents || !verified.parents.includes(options.parentFolderId)) {
+      throw new Error(
+        `[Parent Verification Error] Uploaded JSON "${options.fileName}" parent [${verified.parents?.join(', ')}] does not match required parentFolderId "${options.parentFolderId}".`
+      );
+    }
+
+    return verified;
   }
 
   /**
-   * Verifies an uploaded file exists on Drive, is not trashed, and returns its metadata.
+   * Verifies an uploaded file exists on Drive, is not trashed, and returns its metadata including parents.
    */
   async verifyFile(fileId: string): Promise<DriveFileInfo> {
     const drive = await this.getClient();
     const response = await drive.files.get({
       fileId,
-      fields: 'id, name, mimeType, size, md5Checksum, trashed',
+      fields: 'id, name, mimeType, size, md5Checksum, trashed, parents',
     });
 
     if (response.data.trashed) {
@@ -297,6 +316,7 @@ export class GoogleDriveService {
       mimeType: response.data.mimeType,
       size: response.data.size,
       md5Checksum: response.data.md5Checksum,
+      parents: response.data.parents,
     };
   }
 
@@ -335,6 +355,97 @@ export class GoogleDriveService {
       };
     }
     return null;
+  }
+
+  /**
+   * Finds a folder by name within an explicit parent folder.
+   */
+  async findFolderByName(folderName: string, parentFolderId: string): Promise<DriveFolderInfo | null> {
+    const drive = await this.getClient();
+    const query = `mimeType = 'application/vnd.google-apps.folder' and name = '${folderName.replace(/'/g, "\\'")}' and '${parentFolderId}' in parents and trashed = false`;
+    const response = await drive.files.list({
+      q: query,
+      fields: 'files(id, name, webViewLink, trashed, parents)',
+      spaces: 'drive',
+    });
+    if (response.data.files && response.data.files.length > 0) {
+      const f = response.data.files[0];
+      return {
+        id: f.id as string,
+        name: f.name as string,
+        webViewLink: f.webViewLink,
+        trashed: f.trashed,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Creates a folder with an explicit parent folder ID.
+   */
+  async createFolder(folderName: string, parentFolderId: string): Promise<DriveFolderInfo> {
+    if (!parentFolderId) {
+      throw new Error(`[Google Drive Error] Cannot create folder "${folderName}" without explicit parentFolderId.`);
+    }
+    const drive = await this.getClient();
+    const res = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [parentFolderId],
+      },
+      fields: 'id, name, webViewLink, trashed, parents',
+    });
+    return {
+      id: res.data.id as string,
+      name: res.data.name as string,
+      webViewLink: res.data.webViewLink,
+      trashed: res.data.trashed,
+    };
+  }
+
+  /**
+   * Renames a file or folder in Google Drive.
+   */
+  async renameItem(fileId: string, newName: string): Promise<DriveFileInfo> {
+    const drive = await this.getClient();
+    const res = await drive.files.update({
+      fileId,
+      requestBody: { name: newName },
+      fields: 'id, name, mimeType, size, parents',
+    });
+    return {
+      id: res.data.id as string,
+      name: res.data.name as string,
+      mimeType: res.data.mimeType,
+      size: res.data.size,
+      parents: res.data.parents,
+    };
+  }
+
+  /**
+   * Moves a file or folder into a new parent folder.
+   */
+  async moveItem(fileId: string, newParentId: string, oldParentId?: string): Promise<DriveFileInfo> {
+    const drive = await this.getClient();
+    let prevParents = oldParentId;
+    if (!prevParents) {
+      const current = await drive.files.get({ fileId, fields: 'parents' });
+      prevParents = current.data.parents?.join(',');
+    }
+    const res = await drive.files.update({
+      fileId,
+      addParents: newParentId,
+      removeParents: prevParents,
+      fields: 'id, name, mimeType, size, parents',
+    });
+    return {
+      id: res.data.id as string,
+      name: res.data.name as string,
+      mimeType: res.data.mimeType,
+      size: res.data.size,
+      parents: res.data.parents,
+    };
   }
 
   /**

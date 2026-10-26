@@ -78,8 +78,41 @@ export class MusicImporter {
   /**
    * Sanitizes strings for use as folder or file names in Google Drive and local paths.
    */
-  private sanitizeName(name: string): string {
+  sanitizeName(name: string): string {
     return name.replace(/[/\\?%*:|"<>]/g, '_').trim();
+  }
+
+  /**
+   * Generates the canonical song folder name: "<Song Title> - <Artist Name>"
+   */
+  getSongFolderName(title: string, artist: string): string {
+    return this.sanitizeName(`${title} - ${artist}`);
+  }
+
+  /**
+   * Finds or creates a dedicated folder per song inside Dhun Music Library.
+   * Checks canonical name "<Title> - <Artist>" first, then legacy "<Artist> - <Title>".
+   * Reuses legacy folder and updates its name to canonical if found.
+   */
+  async findOrCreateSongFolder(title: string, artist: string, rootFolderId: string): Promise<DriveFolderInfo> {
+    const canonicalName = this.getSongFolderName(title, artist);
+    const legacyName = this.sanitizeName(`${artist} - ${title}`);
+
+    // 1. Check if canonical folder exists inside Dhun Music Library
+    let folder = await googleDriveService.findFolderByName(canonicalName, rootFolderId);
+    if (folder) return folder;
+
+    // 2. Check if legacy folder exists and rename to canonical
+    folder = await googleDriveService.findFolderByName(legacyName, rootFolderId);
+    if (folder) {
+      console.log(`  Reusing existing folder "${legacyName}", updating to canonical name "${canonicalName}"...`);
+      await googleDriveService.renameItem(folder.id, canonicalName);
+      folder.name = canonicalName;
+      return folder;
+    }
+
+    // 3. Create fresh folder with canonical name under rootFolderId
+    return googleDriveService.createFolder(canonicalName, rootFolderId);
   }
 
   /**
@@ -203,6 +236,8 @@ export class MusicImporter {
                 trackNumber: data.trackNumber,
                 discNumber: data.discNumber,
                 durationSeconds: data.durationSeconds,
+                durationMs: data.durationSeconds ? Math.round(data.durationSeconds * 1000) : 0,
+                language: data.language,
                 codec: data.codec,
                 lossless: data.lossless,
                 sampleRate: data.sampleRate,
@@ -278,13 +313,12 @@ export class MusicImporter {
           continue;
         }
 
-        // 4. Live import: Create or find track subfolder on Google Drive
-        const folderName = this.sanitizeName(`${data.artist} - ${data.title}`);
+        // 4. Live import: Create or reuse dedicated track subfolder on Google Drive
         const trackFolder = await this.retryOperation(() =>
-          googleDriveService.findOrCreateFolder(folderName, rootFolderId)
+          this.findOrCreateSongFolder(data.title, data.artist, rootFolderId)
         );
 
-        // 5. Upload original audio bytes (with existing-file check and MD5 verification)
+        // 5. Upload original audio bytes (with existing-file check, explicit parentFolderId, and MD5 verification)
         console.log(`  Uploading/verifying audio file in Drive...`);
         const audioUpload = await this.retryOperation(() =>
           googleDriveService.uploadFile({
@@ -295,7 +329,7 @@ export class MusicImporter {
           })
         );
 
-        // 6. Upload Artwork (if available)
+        // 6. Upload Artwork (if available) - naming: artwork.jpg / artwork.png
         let artworkFileId: string | undefined;
         if (data.embeddedArtwork) {
           const ext = data.embeddedArtwork.format.includes('png') ? '.png' : '.jpg';
@@ -305,7 +339,7 @@ export class MusicImporter {
           const artUpload = await this.retryOperation(() =>
             googleDriveService.uploadFile({
               filePath: tempArtPath,
-              fileName: `cover${ext}`,
+              fileName: `artwork${ext}`,
               mimeType: data.embeddedArtwork!.format,
               parentFolderId: trackFolder.id,
             })
@@ -317,7 +351,7 @@ export class MusicImporter {
           const artUpload = await this.retryOperation(() =>
             googleDriveService.uploadFile({
               filePath: data.externalArtworkPath!,
-              fileName: `cover${ext}`,
+              fileName: `artwork${ext}`,
               mimeType: ext === '.png' ? 'image/png' : 'image/jpeg',
               parentFolderId: trackFolder.id,
             })
@@ -360,6 +394,20 @@ export class MusicImporter {
         }
         await this.retryOperation(() => googleDriveService.verifyFile(metaUpload.id));
 
+        // Discover any pre-existing assets in folder if not set in this upload pass
+        if (!artworkFileId && trackFolder.id) {
+          const existingArt =
+            (await googleDriveService.findFileInFolder('artwork.jpg', trackFolder.id)) ||
+            (await googleDriveService.findFileInFolder('artwork.png', trackFolder.id)) ||
+            (await googleDriveService.findFileInFolder('cover.jpg', trackFolder.id)) ||
+            (await googleDriveService.findFileInFolder('cover.png', trackFolder.id));
+          if (existingArt) artworkFileId = existingArt.id;
+        }
+        if (!lyricsFileId && trackFolder.id) {
+          const existingLyrics = await googleDriveService.findFileInFolder('lyrics.txt', trackFolder.id);
+          if (existingLyrics) lyricsFileId = existingLyrics.id;
+        }
+
         // 10. Persist manifest immediately so partial failure does not re-upload Drive files
         const entry: ManifestEntry = {
           fileHash: data.fileHash,
@@ -399,6 +447,8 @@ export class MusicImporter {
               trackNumber: data.trackNumber,
               discNumber: data.discNumber,
               durationSeconds: data.durationSeconds,
+              durationMs: data.durationSeconds ? Math.round(data.durationSeconds * 1000) : 0,
+              language: data.language,
               codec: data.codec,
               lossless: data.lossless,
               sampleRate: data.sampleRate,
