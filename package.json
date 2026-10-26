@@ -45,5 +45,14 @@
     "web": "expo start --web",
     "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-av"
+        ]
+      }
+    }
+  }
 }
