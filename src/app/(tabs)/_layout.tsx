@@ -70,17 +70,6 @@ export default function TabLayout() {
             ),
           }}
         />
-        <Tabs.Screen
-          name="sources"
-          options={{
-            title: 'Sources',
-            tabBarIcon: ({ color, size, focused }) => (
-              <NavIconAccent id="sources" focused={focused} size={size + 8}>
-                <Ionicons name="cloud-download" size={size} color={color as string} />
-              </NavIconAccent>
-            ),
-          }}
-        />
       </Tabs>
     </View>
   );

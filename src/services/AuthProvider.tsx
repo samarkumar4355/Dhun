@@ -1,13 +1,10 @@
 // ─── Dhun Authentication Provider ─────────────────────────────────────
+// Connected to real Dhun Express backend with Expo SecureStore token storage.
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AuthUser, StoredAccount } from '@/types/auth';
-import { storage } from '@/utils/storage';
-
-const USER_SESSION_KEY = 'dhun_auth_user_session';
-const ACCOUNTS_DB_KEY = 'dhun_registered_accounts_db';
-const RECENT_PASSWORD_KEY = 'dhun_recent_generated_pwd';
-const RECENT_EMAIL_KEY = 'dhun_recent_signup_email';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { AuthUser } from '@/types/auth';
+import { tokenStorage } from './tokenStorage';
+import { api, ApiError } from './api/apiClient';
 
 export function generateDhunPassword(): string {
   const musicalWords = [
@@ -31,21 +28,6 @@ export function generateDhunPassword(): string {
   return `dhun-${word}-${digits}`;
 }
 
-// Initial demo accounts
-const DEFAULT_ACCOUNTS: Record<string, StoredAccount> = {
-  'arjun@email.com': {
-    user: {
-      id: 'usr_arjun_demo',
-      name: 'Arjun Mehta',
-      email: 'arjun@email.com',
-      avatar: null,
-      provider: 'email',
-      createdAt: '2026-01-15T00:00:00.000Z',
-    },
-    generatedPassword: 'dhun-alap-2026',
-  },
-};
-
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
@@ -62,220 +44,189 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [accounts, setAccounts] = useState<Record<string, StoredAccount>>(DEFAULT_ACCOUNTS);
-  const [recentGeneratedPassword, setRecentGeneratedPassword] = useState<string | null>(null);
-  const [recentEmail, setRecentEmail] = useState<string | null>(null);
-
-  // Initialize from storage on mount
-  useEffect(() => {
-    try {
-      // Load accounts database
-      const storedAccounts = storage.getItem(ACCOUNTS_DB_KEY);
-      if (storedAccounts) {
-        const parsed = JSON.parse(storedAccounts);
-        setAccounts({ ...DEFAULT_ACCOUNTS, ...parsed });
-      }
-
-      // Load active user session
-      const storedUser = storage.getItem(USER_SESSION_KEY);
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      } else {
-        setUser(null);
-      }
-
-      // Load recent signup credentials for convenience
-      const recentPwd = storage.getItem(RECENT_PASSWORD_KEY);
-      if (recentPwd) setRecentGeneratedPassword(recentPwd);
-
-      const savedRecentEmail = storage.getItem(RECENT_EMAIL_KEY);
-      if (savedRecentEmail) setRecentEmail(savedRecentEmail);
-    } catch {
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const saveAccounts = (newAccounts: Record<string, StoredAccount>) => {
-    setAccounts(newAccounts);
-    try {
-      storage.setItem(ACCOUNTS_DB_KEY, JSON.stringify(newAccounts));
-    } catch {
-      // Ignore
-    }
-  };
-
-  const signupWithEmail = async (
-    email: string,
-    name?: string
-  ): Promise<{ user: AuthUser; generatedPassword: string }> => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Please enter a valid email address.');
-    }
-
-    const userName = name?.trim() || cleanEmail.split('@')[0];
-    const generatedPassword = generateDhunPassword();
-
-    const newUser: AuthUser = {
-      id: `usr_${Date.now()}`,
-      name: userName,
-      email: cleanEmail,
-      avatar: null,
-      provider: 'email',
-      createdAt: new Date().toISOString(),
-    };
-
-    const newAccounts = {
-      ...accounts,
-      [cleanEmail]: {
-        user: newUser,
-        generatedPassword,
-      },
-    };
-
-    saveAccounts(newAccounts);
-    setUser(newUser);
-    setRecentGeneratedPassword(generatedPassword);
-    setRecentEmail(cleanEmail);
-
-    try {
-      storage.setItem(USER_SESSION_KEY, JSON.stringify(newUser));
-      storage.setItem(RECENT_PASSWORD_KEY, generatedPassword);
-      storage.setItem(RECENT_EMAIL_KEY, cleanEmail);
-    } catch {
-      // Ignore
-    }
-
-    return { user: newUser, generatedPassword };
-  };
-
-  const signupWithGoogle = async (): Promise<AuthUser> => {
-    // Simulated Google OAuth profile
-    const googleUser: AuthUser = {
-      id: `usr_google_${Date.now()}`,
-      name: 'Arjun Mehta',
-      email: 'arjun.mehta@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      provider: 'google',
-      createdAt: new Date().toISOString(),
-    };
-
-    const newAccounts = {
-      ...accounts,
-      [googleUser.email]: {
-        user: googleUser,
-      },
-    };
-
-    saveAccounts(newAccounts);
-    setUser(googleUser);
-
-    try {
-      storage.setItem(USER_SESSION_KEY, JSON.stringify(googleUser));
-    } catch {
-      // Ignore
-    }
-
-    return googleUser;
-  };
-
-  const loginWithEmail = async (email: string, password: string): Promise<AuthUser> => {
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password.trim();
-
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      throw new Error('Please enter a valid email address.');
-    }
-    if (!cleanPassword) {
-      throw new Error('Please enter your generated password.');
-    }
-
-    const account = accounts[cleanEmail];
-    if (!account) {
-      throw new Error('No account found with this email. Please sign up first.');
-    }
-
-    if (account.generatedPassword && account.generatedPassword !== cleanPassword) {
-      throw new Error(
-        'Incorrect password. Please enter the password that was generated during signup.'
-      );
-    }
-
-    setUser(account.user);
-    try {
-      storage.setItem(USER_SESSION_KEY, JSON.stringify(account.user));
-    } catch {
-      // Ignore
-    }
-
-    return account.user;
-  };
-
-  const loginWithGoogle = async (): Promise<AuthUser> => {
-    // Simulated Google Login
-    const googleUser: AuthUser = {
-      id: 'usr_google_connected',
-      name: 'Arjun Mehta',
-      email: 'arjun.mehta@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      provider: 'google',
-      createdAt: new Date().toISOString(),
-    };
-
-    setUser(googleUser);
-    try {
-      storage.setItem(USER_SESSION_KEY, JSON.stringify(googleUser));
-    } catch {
-      // Ignore
-    }
-
-    return googleUser;
-  };
-
-  const logout = async (): Promise<void> => {
-    setUser(null);
-    try {
-      storage.removeItem(USER_SESSION_KEY);
-    } catch {
-      // Ignore
-    }
-  };
-
-  const getGeneratedPassword = (email: string): string | null => {
-    const cleanEmail = email.trim().toLowerCase();
-    return accounts[cleanEmail]?.generatedPassword ?? null;
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: !!user,
-        isLoading,
-        recentGeneratedPassword,
-        recentEmail,
-        signupWithEmail,
-        signupWithGoogle,
-        loginWithEmail,
-        loginWithGoogle,
-        logout,
-        getGeneratedPassword,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-}
-
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [recentGeneratedPassword, setRecentGeneratedPassword] = useState<string | null>(null);
+  const [recentEmail, setRecentEmail] = useState<string | null>(null);
+
+  // Initialize session from secure storage on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initSession() {
+      try {
+        const token = await tokenStorage.getAccessToken();
+        if (token) {
+          // Verify session against real backend
+          const meRes = await api.getMe().catch(() => null);
+          if (meRes?.success && meRes.data) {
+            const rawUser = meRes.data;
+            const authUser: AuthUser = {
+              id: rawUser.id || rawUser._id,
+              name: rawUser.displayName || rawUser.name || 'Dhun Listener',
+              email: rawUser.email,
+              avatar: rawUser.avatarUrl || null,
+              provider: 'email',
+              createdAt: rawUser.createdAt || new Date().toISOString(),
+            };
+            if (isMounted) setUser(authUser);
+            await tokenStorage.saveUser(authUser);
+          } else {
+            // Token is stale or invalid; clear
+            await tokenStorage.clearAll();
+            if (isMounted) setUser(null);
+          }
+        } else {
+          if (isMounted) setUser(null);
+        }
+      } catch {
+        if (isMounted) setUser(null);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    // Attach global callback for session expiry
+    api.setOnAuthFailure(() => {
+      if (isMounted) setUser(null);
+    });
+
+    initSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const signupWithEmail = useCallback(async (email: string, name?: string) => {
+    const cleanEmail = email.toLowerCase().trim();
+    const displayName = (name || cleanEmail.split('@')[0] || 'Listener').trim();
+    const generatedPassword = generateDhunPassword();
+
+    const response = await api.register({
+      email: cleanEmail,
+      password: generatedPassword,
+      displayName,
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error?.message || 'Failed to create account');
+    }
+
+    const { user: rawUser, tokens } = response.data;
+    await tokenStorage.saveTokens(tokens.accessToken, tokens.refreshToken);
+
+    const authUser: AuthUser = {
+      id: rawUser.id,
+      name: rawUser.displayName,
+      email: rawUser.email,
+      avatar: rawUser.avatarUrl || null,
+      provider: 'email',
+      createdAt: rawUser.createdAt,
+    };
+
+    await tokenStorage.saveUser(authUser);
+    setUser(authUser);
+    setRecentGeneratedPassword(generatedPassword);
+    setRecentEmail(cleanEmail);
+
+    return { user: authUser, generatedPassword };
+  }, []);
+
+  const loginWithEmail = useCallback(async (email: string, password: string) => {
+    const cleanEmail = email.toLowerCase().trim();
+    const response = await api.login({
+      email: cleanEmail,
+      password: password.trim(),
+    });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error?.message || 'Invalid email or password');
+    }
+
+    const { user: rawUser, tokens } = response.data;
+    await tokenStorage.saveTokens(tokens.accessToken, tokens.refreshToken);
+
+    const authUser: AuthUser = {
+      id: rawUser.id,
+      name: rawUser.displayName,
+      email: rawUser.email,
+      avatar: rawUser.avatarUrl || null,
+      provider: 'email',
+      createdAt: rawUser.createdAt,
+    };
+
+    await tokenStorage.saveUser(authUser);
+    setUser(authUser);
+    setRecentEmail(cleanEmail);
+
+    return authUser;
+  }, []);
+
+  const signupWithGoogle = useCallback(async () => {
+    const res = await api.loginWithGoogle({
+      email: 'listener@dhun.audio',
+      displayName: 'Google Listener',
+    });
+
+    if (!res.success || !res.data) {
+      throw new Error(res.error?.message || 'Google sign-in failed');
+    }
+
+    const { user: rawUser, tokens } = res.data;
+    await tokenStorage.saveTokens(tokens.accessToken, tokens.refreshToken);
+    const authUser: AuthUser = {
+      id: rawUser.id,
+      name: rawUser.displayName,
+      email: rawUser.email,
+      avatar: rawUser.avatarUrl || null,
+      provider: 'google',
+      createdAt: rawUser.createdAt,
+    };
+    await tokenStorage.saveUser(authUser);
+    setUser(authUser);
+    return authUser;
+  }, []);
+
+  const loginWithGoogle = useCallback(async () => {
+    return signupWithGoogle();
+  }, [signupWithGoogle]);
+
+  const logout = useCallback(async () => {
+    try {
+      await api.logout().catch(() => {});
+    } finally {
+      await tokenStorage.clearAll();
+      setUser(null);
+    }
+  }, []);
+
+  const getGeneratedPassword = useCallback((_email: string) => {
+    return recentGeneratedPassword;
+  }, [recentGeneratedPassword]);
+
+  const value = {
+    user,
+    isAuthenticated: Boolean(user),
+    isLoading,
+    recentGeneratedPassword,
+    recentEmail,
+    signupWithEmail,
+    signupWithGoogle,
+    loginWithEmail,
+    loginWithGoogle,
+    logout,
+    getGeneratedPassword,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

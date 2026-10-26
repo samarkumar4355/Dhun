@@ -162,6 +162,41 @@ export default function AudioDetailsScreen() {
           </Text>
         </GlassSurface>
 
+        {/* Lyrics Section */}
+        <GlassSurface
+          variant="card"
+          borderRadius={radius.lg}
+          showTopHighlight
+          style={[styles.detailsCard, { marginHorizontal: spacing.lg, marginBottom: spacing.lg }]}
+        >
+          <View style={styles.lyricsCardHeader}>
+            <Ionicons name="document-text-outline" size={18} color={colors.accent} style={{ marginRight: spacing.sm }} />
+            <Text style={[typography.label, { color: colors.textSecondary }]}>
+              Lyrics
+            </Text>
+          </View>
+
+          {currentSong.lyrics && currentSong.lyrics.trim().length > 0 ? (
+            <View style={styles.lyricsBody}>
+              <Text
+                style={[
+                  styles.lyricsText,
+                  { color: colors.textPrimary },
+                ]}
+                selectable
+              >
+                {currentSong.lyrics}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.lyricsUnavailableBox}>
+              <Text style={[typography.body, { color: colors.textSecondary }]}>
+                Lyrics unavailable
+              </Text>
+            </View>
+          )}
+        </GlassSurface>
+
         {/* Quality Badge */}
         <View style={styles.badgeRow}>
           <QualityBadge
@@ -258,5 +293,23 @@ const styles = StyleSheet.create({
   },
   badgeRow: {
     paddingHorizontal: spacing.lg,
+  },
+  lyricsCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  lyricsBody: {
+    marginTop: spacing.xs,
+  },
+  lyricsText: {
+    fontSize: 14,
+    lineHeight: 24,
+    fontWeight: '400',
+    letterSpacing: 0.2,
+  },
+  lyricsUnavailableBox: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
   },
 });

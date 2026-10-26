@@ -1,35 +1,172 @@
 // ─── Library Screen ─────────────────────────────────────────────────
 
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, FlatList, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/theme/ThemeProvider';
 import { usePlayer } from '@/services/PlayerProvider';
+import { useAuth } from '@/services/AuthProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { SongRow } from '@/components/SongRow';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { GlassSurface } from '@/components/GlassSurface';
-import { mockSongs } from '@/data/mockSongs';
-import { mockAlbums } from '@/data/mockAlbums';
-import { mockArtists } from '@/data/mockArtists';
-import { mockPlaylists } from '@/data/mockPlaylists';
+import { api, formatBackendTrackToSong } from '@/services/api/apiClient';
+import { offlineService } from '@/services/offlineService';
+import { Song, Album, Artist, Playlist } from '@/types/music';
 
-type LibraryTab = 'All' | 'Artists' | 'Albums' | 'Genres' | 'Folders';
+type LibraryTab = 'All' | 'Favorites' | 'Playlists' | 'Artists' | 'Albums' | 'Genres';
+type FilterType = 'All' | 'Lossless Only' | 'Offline Downloaded';
 
-const tabs: LibraryTab[] = ['All', 'Artists', 'Albums', 'Genres', 'Folders'];
+const tabs: LibraryTab[] = ['All', 'Favorites', 'Playlists', 'Artists', 'Albums', 'Genres'];
+const filters: FilterType[] = ['All', 'Lossless Only', 'Offline Downloaded'];
 
 export default function LibraryScreen() {
   const { colors, glass } = useTheme();
   const { currentSong, play } = usePlayer();
+  const { isAuthenticated } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<LibraryTab>('All');
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
-  const filters = ['Local Files', 'Google Drive', 'Offline'];
+  const [activeTab, setActiveTab] = useState<LibraryTab>('All');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('All');
+
+  // Real library state (No fabricated mock fixtures in production)
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [favoriteSongs, setFavoriteSongs] = useState<Song[]>([]);
+  const [offlineSongs, setOfflineSongs] = useState<Song[]>([]);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [genres, setGenres] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // If navigated with filter param
+  useEffect(() => {
+    if (params.filter === 'Downloaded') {
+      setActiveFilter('Offline Downloaded');
+    }
+  }, [params.filter]);
+
+  const loadLibraryData = useCallback(async () => {
+    try {
+      setError(null);
+      // 1. Fetch offline downloaded songs
+      const downloaded = await offlineService.getDownloadedTracks();
+      setOfflineSongs(downloaded);
+
+      // 2. Fetch tracks from backend
+      const tracksRes = await api.getTracks({ limit: 50 }).catch(err => {
+        setError(err.message || 'Could not load tracks from Dhun server');
+        return null;
+      });
+      if (tracksRes?.success && tracksRes.data) {
+        const mapped = tracksRes.data.map(t =>
+          formatBackendTrackToSong(t, false, offlineService.isDownloaded(t.id))
+        );
+        setSongs(mapped);
+      }
+
+      // 3. Fetch albums
+      const albumsRes = await api.getAlbums().catch(() => null);
+      if (albumsRes?.success && albumsRes.data && albumsRes.data.length > 0) {
+        const mappedAlbums: Album[] = albumsRes.data.map(a => ({
+          id: a.id || a._id || '',
+          title: a.title,
+          artistId: typeof a.artists?.[0] === 'object' ? (a.artists[0] as any).id : '',
+          artistName: typeof a.artists?.[0] === 'object' ? (a.artists[0] as any).name : 'Various Artists',
+          artwork: a.artworkUrl || null,
+          year: a.releaseYear || 2026,
+          songCount: a.tracks?.length || 1,
+        }));
+        setAlbums(mappedAlbums);
+      }
+
+      // 4. Fetch artists
+      const artistsRes = await api.getArtists().catch(() => null);
+      if (artistsRes?.success && artistsRes.data && artistsRes.data.length > 0) {
+        const mappedArtists: Artist[] = artistsRes.data.map(ar => ({
+          id: ar.id || ar._id || '',
+          name: ar.name,
+          artwork: ar.artworkUrl || null,
+          languages: ['Hindi', 'English'],
+          genres: (ar.genres || []).map(g => (typeof g === 'object' ? (g as any).name : String(g))),
+        }));
+        setArtists(mappedArtists);
+      }
+
+      // 5. Fetch genres
+      const genresRes = await api.getGenres().catch(() => null);
+      if (genresRes?.success && genresRes.data && genresRes.data.length > 0) {
+        setGenres(genresRes.data.map(g => g.name));
+      }
+
+      // 6. If authenticated, fetch favorites & playlists
+      if (isAuthenticated) {
+        const [favsRes, playlistsRes] = await Promise.all([
+          api.getFavorites(1, 50).catch(() => null),
+          api.getUserPlaylists().catch(() => null),
+        ]);
+
+        if (favsRes?.success && favsRes.data) {
+          const favMapped = favsRes.data
+            .filter(item => item.track)
+            .map(item => formatBackendTrackToSong(item.track, true, offlineService.isDownloaded(item.track.id)));
+          setFavoriteSongs(favMapped);
+        }
+
+        if (playlistsRes?.success && playlistsRes.data) {
+          const plMapped: Playlist[] = playlistsRes.data.map(p => ({
+            id: p.id || p._id || '',
+            name: p.title,
+            artwork: p.artworkUrl || null,
+            songIds: (p.tracks || []).map(t => (t.track ? t.track.id : '')).filter(Boolean),
+            createdAt: p.createdAt,
+          }));
+          setPlaylists(plMapped);
+        }
+      }
+    } catch {
+      // Fallback to offline or cached fixtures
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    loadLibraryData();
+  }, [loadLibraryData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadLibraryData();
+  };
+
+  // Filtered tracks based on quick filter selection
+  const displayedSongs = (() => {
+    let list = activeTab === 'Favorites' ? favoriteSongs : songs;
+    if (activeFilter === 'Offline Downloaded') {
+      list = offlineSongs.length > 0 ? offlineSongs : songs.filter(s => s.isOffline);
+    } else if (activeFilter === 'Lossless Only') {
+      list = list.filter(s => s.format === 'FLAC' || s.bitDepth >= 24);
+    }
+    return list;
+  })();
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -37,13 +174,21 @@ export default function LibraryScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: currentSong ? 100 : 20 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
           <Text style={[typography.h1, { color: colors.textPrimary }]}>Your Library</Text>
         </View>
 
-        {/* Tabs */}
+        {/* Library Navigation Tabs */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -74,10 +219,9 @@ export default function LibraryScreen() {
           ))}
         </ScrollView>
 
-        {/* Library sections */}
+        {/* Tab 1: All (Collections Overview & Songs) */}
         {activeTab === 'All' && (
           <>
-            {/* Frosted Glass Collection Card */}
             <GlassSurface
               variant="card"
               borderRadius={radius.lg}
@@ -87,15 +231,23 @@ export default function LibraryScreen() {
               <LibraryRow
                 icon="list"
                 label="Playlists"
-                count={`${mockPlaylists.length} playlists`}
+                count={`${playlists.length} playlists`}
                 onPress={() => router.push('/playlists')}
+                colors={colors}
+              />
+              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
+              <LibraryRow
+                icon="heart"
+                label="Favorites"
+                count={`${favoriteSongs.length || likedCountFor(songs)} songs`}
+                onPress={() => setActiveTab('Favorites')}
                 colors={colors}
               />
               <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
               <LibraryRow
                 icon="people"
                 label="Artists"
-                count={`${mockArtists.length} artists`}
+                count={`${artists.length} artists`}
                 onPress={() => router.push('/artists')}
                 colors={colors}
               />
@@ -103,32 +255,16 @@ export default function LibraryScreen() {
               <LibraryRow
                 icon="disc"
                 label="Albums"
-                count={`${mockAlbums.length} albums`}
-                onPress={() => router.push('/(tabs)/library')}
+                count={`${albums.length} albums`}
+                onPress={() => setActiveTab('Albums')}
                 colors={colors}
               />
               <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
               <LibraryRow
-                icon="musical-notes"
-                label="Songs"
-                count={`${mockSongs.length} songs`}
-                onPress={() => {}}
-                colors={colors}
-              />
-              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
-              <LibraryRow
-                icon="pricetags"
-                label="Genres"
-                count="12 genres"
-                onPress={() => {}}
-                colors={colors}
-              />
-              <View style={[styles.rowDivider, { backgroundColor: glass.border }]} />
-              <LibraryRow
-                icon="folder"
-                label="Folders"
-                count="8 folders"
-                onPress={() => {}}
+                icon="cloud-offline"
+                label="Offline Downloads"
+                count={`${offlineSongs.length} tracks stored`}
+                onPress={() => setActiveFilter('Offline Downloaded')}
                 colors={colors}
               />
             </GlassSurface>
@@ -136,7 +272,7 @@ export default function LibraryScreen() {
             {/* Quick Filters */}
             <View style={styles.filterSection}>
               <Text style={[typography.label, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                Quick Filters
+                Filters
               </Text>
               <View style={styles.filterRow}>
                 {filters.map(filter => (
@@ -144,7 +280,7 @@ export default function LibraryScreen() {
                     key={filter}
                     variant={activeFilter === filter ? 'card' : 'subtle'}
                     borderRadius={radius.full}
-                    onPress={() => setActiveFilter(activeFilter === filter ? null : filter)}
+                    onPress={() => setActiveFilter(activeFilter === filter ? 'All' : filter)}
                     style={[
                       styles.filterChip,
                       activeFilter === filter && {
@@ -169,28 +305,81 @@ export default function LibraryScreen() {
               </View>
             </View>
 
-            {/* Recent Songs */}
+            {/* Song List */}
             <View style={styles.songsSection}>
-              {mockSongs.map(song => (
-                <SongRow
-                  key={song.id}
-                  song={song}
-                  onPress={() => play(song)}
-                  isActive={currentSong?.id === song.id}
+              {displayedSongs.length === 0 ? (
+                <EmptyLibraryNotice
+                  message={
+                    activeFilter === 'Offline Downloaded'
+                      ? 'No offline songs downloaded yet. Tap the download icon in Now Playing to listen offline.'
+                      : 'No tracks found in library.'
+                  }
+                  colors={colors}
                 />
-              ))}
+              ) : (
+                displayedSongs.map(song => (
+                  <SongRow
+                    key={song.id}
+                    song={song}
+                    onPress={() => play(song, displayedSongs)}
+                    isActive={currentSong?.id === song.id}
+                  />
+                ))
+              )}
             </View>
           </>
         )}
 
+        {/* Tab 2: Favorites */}
+        {activeTab === 'Favorites' && (
+          <View style={styles.songsSection}>
+            {favoriteSongs.length === 0 ? (
+              <EmptyLibraryNotice
+                message={
+                  isAuthenticated
+                    ? 'No favorite songs yet. Tap the heart icon on any track to add it here.'
+                    : 'Log in to sync and access your favorite songs.'
+                }
+                colors={colors}
+              />
+            ) : (
+              favoriteSongs.map(song => (
+                <SongRow
+                  key={song.id}
+                  song={song}
+                  onPress={() => play(song, favoriteSongs)}
+                  isActive={currentSong?.id === song.id}
+                />
+              ))
+            )}
+          </View>
+        )}
+
+        {/* Tab 3: Playlists */}
+        {activeTab === 'Playlists' && (
+          <View style={styles.songsSection}>
+            {playlists.map(pl => (
+              <LibraryRow
+                key={pl.id}
+                icon="list"
+                label={pl.name}
+                count={`${pl.songIds.length} tracks`}
+                onPress={() => router.push('/playlists')}
+                colors={colors}
+              />
+            ))}
+          </View>
+        )}
+
+        {/* Tab 4: Artists */}
         {activeTab === 'Artists' && (
           <View style={styles.songsSection}>
-            {mockArtists.map(artist => (
+            {artists.map(artist => (
               <LibraryRow
                 key={artist.id}
                 icon="person"
                 label={artist.name}
-                count={artist.genres.join(', ')}
+                count={artist.genres.join(', ') || 'Artist'}
                 onPress={() => router.push('/artists')}
                 colors={colors}
               />
@@ -198,45 +387,37 @@ export default function LibraryScreen() {
           </View>
         )}
 
+        {/* Tab 5: Albums */}
         {activeTab === 'Albums' && (
           <View style={styles.songsSection}>
-            {mockAlbums.map(album => (
+            {albums.map(album => (
               <LibraryRow
                 key={album.id}
                 icon="disc"
                 label={album.title}
                 count={`${album.artistName} · ${album.year}`}
-                onPress={() => {}}
+                onPress={() => {
+                  const matched = songs.find(s => s.albumId === album.id) || songs[0];
+                  if (matched) play(matched);
+                }}
                 colors={colors}
               />
             ))}
           </View>
         )}
 
+        {/* Tab 6: Genres */}
         {activeTab === 'Genres' && (
           <View style={styles.songsSection}>
-            {['Bollywood', 'Indie', 'Rock', 'Pop', 'Classical', 'Hip-Hop', 'R&B', 'Electronic', 'Folk', 'Punjabi', 'Acoustic', 'Film Score'].map(genre => (
+            {genres.map(genre => (
               <LibraryRow
                 key={genre}
                 icon="musical-note"
                 label={genre}
-                count=""
-                onPress={() => {}}
-                colors={colors}
-              />
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'Folders' && (
-          <View style={styles.songsSection}>
-            {['Music', 'Downloads', 'Imported', 'Google Drive', 'WhatsApp Audio', 'Recordings', 'Podcasts', 'Ringtones'].map(folder => (
-              <LibraryRow
-                key={folder}
-                icon="folder"
-                label={folder}
-                count=""
-                onPress={() => {}}
+                count="Tap to explore"
+                onPress={() => {
+                  router.push({ pathname: '/(tabs)/search', params: { q: genre } });
+                }}
                 colors={colors}
               />
             ))}
@@ -249,6 +430,21 @@ export default function LibraryScreen() {
           <MiniPlayer />
         </View>
       )}
+    </View>
+  );
+}
+
+function likedCountFor(songs: Song[]): number {
+  return songs.filter(s => s.isFavorite).length;
+}
+
+function EmptyLibraryNotice({ message, colors }: { message: string; colors: any }) {
+  return (
+    <View style={styles.emptyNotice}>
+      <Ionicons name="musical-notes-outline" size={36} color={colors.textMuted} style={{ marginBottom: spacing.sm }} />
+      <Text style={[typography.body, { color: colors.textSecondary, textAlign: 'center', paddingHorizontal: spacing.xl }]}>
+        {message}
+      </Text>
     </View>
   );
 }
@@ -336,6 +532,11 @@ const styles = StyleSheet.create({
   },
   songsSection: {
     paddingTop: spacing.sm,
+  },
+  emptyNotice: {
+    paddingVertical: spacing['2xl'],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   miniPlayerContainer: {
     position: 'absolute',

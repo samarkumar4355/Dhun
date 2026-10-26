@@ -23,8 +23,8 @@ export interface Song {
   source: AudioSource;
   isOffline: boolean;
   isFavorite: boolean;
-  /** Plain-text lyrics. Undefined or empty means lyrics are unavailable. */
-  lyrics?: string;
+  /** Plain-text lyrics. Undefined, null, or empty means lyrics are unavailable. */
+  lyrics?: string | null;
 }
 
 export interface Artist {

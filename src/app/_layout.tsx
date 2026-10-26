@@ -32,7 +32,7 @@ function RootNavigator() {
           }}
         />
         <Stack.Screen name="audio-details" />
-        <Stack.Screen name="import-progress" />
+        <Stack.Screen name="about" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="moments" />
         <Stack.Screen name="playlists" />

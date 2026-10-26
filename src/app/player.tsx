@@ -37,7 +37,11 @@ export default function PlayerScreen() {
     toggleShuffle,
     toggleRepeat,
     toggleFavorite,
+    downloadSong,
+    deleteDownload,
   } = usePlayer();
+
+  const [trackWidth, setTrackWidth] = useState(SCREEN_WIDTH - 48);
 
   // ─── Lyrics flip state ──────────────────────────────────────────
   const [showLyrics, setShowLyrics] = useState(false);
@@ -130,23 +134,53 @@ export default function PlayerScreen() {
               {currentSong.albumName}
             </Text>
           </View>
-          <Pressable
-            onPress={() => toggleFavorite(currentSong.id)}
-            hitSlop={12}
-            accessibilityLabel={currentSong.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          >
-            <Ionicons
-              name={currentSong.isFavorite ? 'heart' : 'heart-outline'}
-              size={26}
-              color={currentSong.isFavorite ? colors.accent : colors.textSecondary}
-            />
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Pressable
+              onPress={() => {
+                if (currentSong.isOffline) {
+                  deleteDownload(currentSong.id);
+                } else {
+                  downloadSong(currentSong);
+                }
+              }}
+              hitSlop={12}
+              accessibilityLabel={currentSong.isOffline ? 'Remove download' : 'Download for offline playback'}
+              style={{ marginRight: spacing.lg }}
+            >
+              <Ionicons
+                name={currentSong.isOffline ? 'checkmark-circle' : 'cloud-download-outline'}
+                size={24}
+                color={currentSong.isOffline ? colors.accent : colors.textSecondary}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => toggleFavorite(currentSong.id)}
+              hitSlop={12}
+              accessibilityLabel={currentSong.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              <Ionicons
+                name={currentSong.isFavorite ? 'heart' : 'heart-outline'}
+                size={26}
+                color={currentSong.isFavorite ? colors.accent : colors.textSecondary}
+              />
+            </Pressable>
+          </View>
         </View>
       </View>
 
       {/* Progress */}
       <View style={styles.progressSection}>
-        <View style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}>
+        <Pressable
+          hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
+          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+          onPress={(e) => {
+            if (trackWidth > 0) {
+              const fraction = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidth));
+              seekTo(fraction);
+            }
+          }}
+          style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}
+        >
           <View
             style={[
               styles.progressFill,
@@ -162,7 +196,7 @@ export default function PlayerScreen() {
               },
             ]}
           />
-        </View>
+        </Pressable>
         <View style={styles.timeRow}>
           <Text style={[typography.caption, { color: colors.textMuted }]}>
             {formatDuration(currentTime)}

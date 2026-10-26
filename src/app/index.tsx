@@ -65,13 +65,19 @@ export default function SplashScreen() {
       withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) })
     );
 
-    // Navigate after animation
-    const timer = setTimeout(() => {
-      navigateNext();
-    }, 3500);
+    // Navigate after animation and when auth check is completed
+    if (!isLoading) {
+      const timer = setTimeout(() => {
+        if (isAuthenticated) {
+          router.replace('/(tabs)/listen');
+        } else {
+          router.replace('/login');
+        }
+      }, 2800);
 
-    return () => clearTimeout(timer);
-  }, [isAuthenticated]);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthenticated, isLoading]);
 
   const wordmarkStyle = useAnimatedStyle(() => ({
     opacity: wordmarkOpacity.value,

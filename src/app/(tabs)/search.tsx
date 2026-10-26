@@ -1,41 +1,96 @@
 // ─── Search Screen ──────────────────────────────────────────────────
 
-import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView, Pressable, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
 import { usePlayer } from '@/services/PlayerProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { ArtistCard } from '@/components/ArtistCard';
+import { AlbumCard } from '@/components/AlbumCard';
 import { SongRow } from '@/components/SongRow';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { GlassSurface } from '@/components/GlassSurface';
-import { mockSongs } from '@/data/mockSongs';
-import { mockArtists } from '@/data/mockArtists';
-import { mockAlbums } from '@/data/mockAlbums';
+import { api, formatBackendTrackToSong } from '@/services/api/apiClient';
+import { offlineService } from '@/services/offlineService';
+import { Song, Artist, Album } from '@/types/music';
 
-const trendingArtists = ['Arijit Singh', 'Taylor Swift', 'lofi', 'The Weeknd', 'A.R. Rahman', 'Armaan Malik'];
+const trendingKeywords = ['Josh Woodward', 'Lossless', 'Classical', 'Flac', 'Acoustic', 'Folk'];
 
 export default function SearchScreen() {
   const { colors, glass } = useTheme();
   const { currentSong, play } = usePlayer();
   const insets = useSafeAreaInsets();
-  const [query, setQuery] = useState('');
+  const router = useRouter();
+  const params = useLocalSearchParams();
 
-  const filteredSongs = query.trim()
-    ? mockSongs.filter(
-        s =>
-          s.title.toLowerCase().includes(query.toLowerCase()) ||
-          s.artistName.toLowerCase().includes(query.toLowerCase()) ||
-          s.albumName.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
+  const [query, setQuery] = useState(typeof params.q === 'string' ? params.q : '');
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [resultsSongs, setResultsSongs] = useState<Song[]>([]);
+  const [resultsArtists, setResultsArtists] = useState<Artist[]>([]);
+  const [resultsAlbums, setResultsAlbums] = useState<Album[]>([]);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const filteredArtists = query.trim()
-    ? mockArtists.filter(a => a.name.toLowerCase().includes(query.toLowerCase()))
-    : [];
+  useEffect(() => {
+    if (!query.trim()) {
+      setResultsSongs([]);
+      setResultsArtists([]);
+      setResultsAlbums([]);
+      setSearching(false);
+      setSearchError(null);
+      return;
+    }
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    debounceTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      setSearchError(null);
+      try {
+        const res = await api.search(query.trim());
+        if (res.success && res.data) {
+          const songsMapped = (res.data.tracks || []).map(t =>
+            formatBackendTrackToSong(t, false, offlineService.isDownloaded(t.id))
+          );
+          const artistsMapped: Artist[] = (res.data.artists || []).map(a => ({
+            id: a.id || a._id || '',
+            name: a.name,
+            artwork: a.artworkUrl || null,
+            languages: ['English', 'Hindi'],
+            genres: (a.genres || []).map(g => (typeof g === 'object' ? (g as any).name : String(g))),
+          }));
+          const albumsMapped: Album[] = (res.data.albums || []).map(al => ({
+            id: al.id || al._id || '',
+            title: al.title,
+            artistId: typeof al.artists?.[0] === 'object' ? (al.artists[0] as any).id : '',
+            artistName: typeof al.artists?.[0] === 'object' ? (al.artists[0] as any).name : 'Artist',
+            artwork: al.artworkUrl || null,
+            year: al.releaseYear || 2026,
+            songCount: al.tracks?.length || 1,
+          }));
+
+          setResultsSongs(songsMapped);
+          setResultsArtists(artistsMapped);
+          setResultsAlbums(albumsMapped);
+        }
+      } catch (err: any) {
+        setSearchError(err.message || 'Unable to connect to search service.');
+        setResultsSongs([]);
+        setResultsArtists([]);
+        setResultsAlbums([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 280);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [query]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -56,7 +111,11 @@ export default function SearchScreen() {
           showTopHighlight
           style={styles.searchBar}
         >
-          <Ionicons name="search" size={18} color={colors.textMuted} />
+          {searching ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Ionicons name="search" size={18} color={colors.textMuted} />
+          )}
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -65,6 +124,7 @@ export default function SearchScreen() {
             style={[typography.body, styles.searchInput, { color: colors.textPrimary }]}
             returnKeyType="search"
             autoCorrect={false}
+            autoCapitalize="none"
           />
           {query.length > 0 && (
             <Pressable onPress={() => setQuery('')} hitSlop={8}>
@@ -73,61 +133,58 @@ export default function SearchScreen() {
           )}
         </GlassSurface>
 
+        {searchError && (
+          <View style={{ marginHorizontal: spacing.lg, marginTop: spacing.md, padding: spacing.md, backgroundColor: 'rgba(224, 122, 95, 0.1)', borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSubtle }}>
+            <Text style={[typography.bodySmall, { color: colors.textPrimary, textAlign: 'center' }]}>
+              {searchError}
+            </Text>
+          </View>
+        )}
+
         {query.trim() === '' ? (
           <>
-            {/* Trending */}
+            {/* Trending / Suggested */}
             <View style={styles.section}>
               <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.md }]}>
-                Trending
+                Suggested Searches
               </Text>
               <View style={styles.chipRow}>
-                {trendingArtists.map(name => (
+                {trendingKeywords.map(keyword => (
                   <GlassSurface
-                    key={name}
+                    key={keyword}
                     variant="subtle"
                     borderRadius={radius.full}
-                    onPress={() => setQuery(name)}
+                    onPress={() => setQuery(keyword)}
                     style={styles.chip}
                   >
                     <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>
-                      {name}
+                      {keyword}
                     </Text>
                   </GlassSurface>
                 ))}
               </View>
             </View>
 
-            {/* Browse by */}
+            {/* Quick Categories */}
             <View style={styles.section}>
               <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.md }]}>
-                Browse by
+                Browse Categories
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {mockArtists.slice(0, 4).map(artist => (
-                  <ArtistCard
-                    key={artist.id}
-                    name={artist.name}
-                    artwork={artist.artwork}
-                    onPress={() => setQuery(artist.name)}
-                    size={80}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* Browse categories */}
-            <View style={styles.section}>
-              {['Artists', 'Albums', 'Genres', 'Languages'].map(category => (
+              {['Lossless Tracks', 'Artists', 'Albums', 'Classical & Folk'].map(category => (
                 <Pressable
                   key={category}
                   style={[styles.browseRow, { borderBottomColor: colors.borderSubtle }]}
-                  onPress={() => setQuery(category.toLowerCase())}
+                  onPress={() => {
+                    if (category === 'Artists') router.push('/artists');
+                    else if (category === 'Albums') router.push('/(tabs)/library');
+                    else setQuery(category.replace(' Tracks', '').toLowerCase());
+                  }}
                 >
                   <Ionicons
                     name={
                       category === 'Artists' ? 'people' :
                       category === 'Albums' ? 'disc' :
-                      category === 'Genres' ? 'pricetags' : 'globe'
+                      category.includes('Lossless') ? 'shield-checkmark' : 'musical-note'
                     }
                     size={20}
                     color={colors.accent}
@@ -140,71 +197,79 @@ export default function SearchScreen() {
                 </Pressable>
               ))}
             </View>
-
-            {/* Recently Searched */}
-            <View style={styles.section}>
-              <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.md }]}>
-                Recently Searched
-              </Text>
-              {['Coldplay', 'Diljit Dosanjh', 'Lana Del Rey'].map(name => {
-                const artist = mockArtists.find(a => a.name === name);
-                return (
-                  <Pressable
-                    key={name}
-                    style={styles.recentRow}
-                    onPress={() => setQuery(name)}
-                  >
-                    <View style={styles.recentInfo}>
-                      <ArtistCard name={name} artwork={null} size={40} />
-                    </View>
-                    <Pressable hitSlop={8} onPress={() => {}}>
-                      <Ionicons name="close" size={16} color={colors.textMuted} />
-                    </Pressable>
-                  </Pressable>
-                );
-              })}
-            </View>
           </>
         ) : (
           <>
-            {/* Search Results */}
-            {filteredArtists.length > 0 && (
+            {/* Artists Matches */}
+            {resultsArtists.length > 0 && (
               <View style={styles.section}>
                 <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
                   Artists
                 </Text>
-                {filteredArtists.map(artist => (
-                  <Pressable
-                    key={artist.id}
-                    style={styles.resultRow}
-                  >
-                    <ArtistCard name={artist.name} artwork={null} size={44} />
-                  </Pressable>
-                ))}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }}>
+                  {resultsArtists.map(artist => (
+                    <ArtistCard
+                      key={artist.id}
+                      name={artist.name}
+                      artwork={artist.artwork}
+                      size={68}
+                      onPress={() => router.push({ pathname: '/artists', params: { search: artist.name } })}
+                    />
+                  ))}
+                </ScrollView>
               </View>
             )}
 
-            {filteredSongs.length > 0 && (
+            {/* Albums Matches */}
+            {resultsAlbums.length > 0 && (
               <View style={styles.section}>
                 <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
-                  Songs
+                  Albums
                 </Text>
-                {filteredSongs.map(song => (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.md }}>
+                  {resultsAlbums.map(album => (
+                    <AlbumCard
+                      key={album.id}
+                      title={album.title}
+                      artistName={album.artistName}
+                      artwork={album.artwork}
+                      onPress={() => {
+                        const matched = resultsSongs.find(s => s.albumId === album.id) || resultsSongs[0];
+                        if (matched) play(matched, resultsSongs);
+                      }}
+                      size={120}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Song Matches */}
+            {resultsSongs.length > 0 && (
+              <View style={styles.section}>
+                <Text style={[typography.h3, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+                  Songs ({resultsSongs.length})
+                </Text>
+                {resultsSongs.map(song => (
                   <SongRow
                     key={song.id}
                     song={song}
-                    onPress={() => play(song)}
+                    onPress={() => play(song, resultsSongs)}
                     isActive={currentSong?.id === song.id}
                   />
                 ))}
               </View>
             )}
 
-            {filteredSongs.length === 0 && filteredArtists.length === 0 && (
+            {/* Empty Search Notice */}
+            {!searching && resultsSongs.length === 0 && resultsArtists.length === 0 && resultsAlbums.length === 0 && (
               <View style={styles.emptySearch}>
-                <Ionicons name="search" size={40} color={colors.textMuted} />
+                <Ionicons name="search-outline" size={44} color={colors.textMuted} />
                 <Text style={[typography.body, { color: colors.textSecondary, marginTop: spacing.md }]}>
-                  No results for "{query}"
+                  No matches found for "{query}"
+                </Text>
+                <Text style={[typography.caption, { color: colors.textMuted, marginTop: 4 }]}>
+                  Try searching for artist name, track title, or album.
                 </Text>
               </View>
             )}
@@ -212,6 +277,7 @@ export default function SearchScreen() {
         )}
       </ScrollView>
 
+      {/* Mini Player */}
       {currentSong && (
         <View style={styles.miniPlayerContainer}>
           <MiniPlayer />
@@ -265,19 +331,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 0.5,
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  recentInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  resultRow: {
-    paddingVertical: spacing.xs,
   },
   emptySearch: {
     alignItems: 'center',

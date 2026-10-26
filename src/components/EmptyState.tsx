@@ -22,11 +22,11 @@ export function EmptyState({ icon, title, subtitle }: EmptyStateProps) {
       <Text style={[typography.h3, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
         {title}
       </Text>
-      {subtitle && (
+      {subtitle ? (
         <Text style={[typography.body, { color: colors.textMuted, textAlign: 'center', maxWidth: 260 }]}>
           {subtitle}
         </Text>
-      )}
+      ) : null}
     </View>
   );
 }

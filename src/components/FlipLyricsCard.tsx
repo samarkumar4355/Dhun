@@ -30,8 +30,8 @@ interface FlipLyricsCardProps {
   artistName: string;
   /** Artwork URI — null falls back to initials placeholder */
   artwork: string | null;
-  /** Lyrics text — undefined/empty shows unavailable state */
-  lyrics?: string;
+  /** Lyrics text — undefined/null/empty shows unavailable state */
+  lyrics?: string | null;
   /** Unique song id — used to detect track changes */
   songId: string;
   /** Whether the card is currently showing lyrics */
@@ -193,7 +193,7 @@ function LyricsBackFace({
   size: number;
   title: string;
   artistName: string;
-  lyrics?: string;
+  lyrics?: string | null;
   hasLyrics: boolean;
   colors: DhunColors;
   onHide: () => void;
@@ -257,7 +257,7 @@ function LyricsBackFace({
         <View style={styles.noLyrics}>
           <Ionicons name="musical-notes-outline" size={36} color={colors.textMuted} />
           <Text style={[typography.body, { color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' }]}>
-            Lyrics aren't available yet.
+            Lyrics unavailable
           </Text>
           <Text style={[typography.caption, { color: colors.textMuted, marginTop: spacing.xs, textAlign: 'center' }]}>
             They'll appear here when added.

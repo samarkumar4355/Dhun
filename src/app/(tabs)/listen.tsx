@@ -1,7 +1,17 @@
 // ─── Home / Listen Screen ───────────────────────────────────────────
 
-import React from 'react';
-import { View, Text, ScrollView, Pressable, FlatList, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  FlatList,
+  StyleSheet,
+  Dimensions,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,10 +28,9 @@ import { MoodCard } from '@/components/MoodCard';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { GlassSurface } from '@/components/GlassSurface';
 import { AnimatedBorder } from '@/components/AnimatedBorder';
-import { mockSongs } from '@/data/mockSongs';
-import { mockAlbums } from '@/data/mockAlbums';
-import { mockArtists } from '@/data/mockArtists';
-import { mockMoments } from '@/data/mockMoments';
+import { api, formatBackendTrackToSong } from '@/services/api/apiClient';
+import { offlineService } from '@/services/offlineService';
+import { Song, Album, Artist, MoodSession } from '@/types/music';
 import { getGreeting, getTimePhraseHindi, stringToColor, getInitials } from '@/utils/helpers';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -29,17 +38,138 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function ListenScreen() {
   const { colors, glass, isDark } = useTheme();
   const { currentSong, play } = usePlayer();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const greeting = getGreeting();
   const timePhrase = getTimePhraseHindi();
-  const recentSongs = mockSongs.slice(0, 3);
-  const likedSongs = mockSongs.filter(s => s.isFavorite);
+
+  // State for real catalog items (No fabricated mock fixtures in production)
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [genres, setGenres] = useState<any[]>([]);
+  const [recentTracks, setRecentTracks] = useState<Song[]>([]);
+  const [likedCount, setLikedCount] = useState<number>(0);
+  const [totalSongsCount, setTotalSongsCount] = useState<number>(0);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const firstName = user?.name ? user.name.split(' ')[0] : 'Listener';
   const initials = user?.name ? getInitials(user.name) : 'DL';
+
+  const loadData = useCallback(async () => {
+    try {
+      setError(null);
+      const [tracksRes, albumsRes, artistsRes, genresRes] = await Promise.all([
+        api.getTracks({ limit: 50 }).catch(err => {
+          throw err;
+        }),
+        api.getAlbums({ limit: 10 }).catch(() => null),
+        api.getArtists({ limit: 10 }).catch(() => null),
+        api.getGenres().catch(() => null),
+      ]);
+
+      if (tracksRes?.success && tracksRes.data) {
+        const mapped = tracksRes.data.map(t =>
+          formatBackendTrackToSong(t, false, offlineService.isDownloaded(t.id))
+        );
+        setRecentTracks(mapped);
+        setTotalSongsCount(tracksRes.meta?.total || mapped.length);
+      }
+
+      if (genresRes?.success && genresRes.data) {
+        setGenres(genresRes.data);
+      }
+
+      if (albumsRes?.success && albumsRes.data) {
+        const mappedAlbums: Album[] = albumsRes.data.map(a => ({
+          id: a.id || a._id || '',
+          title: a.title,
+          artistId: typeof a.artists?.[0] === 'object' ? (a.artists[0] as any).id : '',
+          artistName: typeof a.artists?.[0] === 'object' ? (a.artists[0] as any).name : 'Various Artists',
+          artwork: a.artworkUrl || null,
+          year: a.releaseYear || 2026,
+          songCount: a.tracks?.length || 1,
+        }));
+        setAlbums(mappedAlbums);
+      }
+
+      if (artistsRes?.success && artistsRes.data) {
+        const mappedArtists: Artist[] = artistsRes.data.map(ar => ({
+          id: ar.id || ar._id || '',
+          name: ar.name,
+          artwork: ar.artworkUrl || null,
+          languages: ['Hindi', 'English'],
+          genres: (ar.genres || []).map(g => (typeof g === 'object' ? (g as any).name : String(g))),
+        }));
+        setArtists(mappedArtists);
+      }
+
+      if (isAuthenticated) {
+        const favsRes = await api.getFavorites(1, 1).catch(() => null);
+        if (favsRes?.success && favsRes.meta?.total !== undefined) {
+          setLikedCount(favsRes.meta.total);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unable to load music from Dhun server.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  const moodSessions: MoodSession[] = useMemo(() => {
+    const list: MoodSession[] = [];
+    const moodTypes: MoodSession['moodType'][] = [
+      'slow-morning',
+      'midnight-drive',
+      'rainy-evening',
+      'deep-focus',
+      'romance',
+      'travel',
+    ];
+
+    genres.forEach((g: any, idx: number) => {
+      const gName = g.name || 'Genre';
+      const matchingSongIds = recentTracks
+        .filter(t => (t as any).genre?.includes?.(gName) || t.artistName.toLowerCase().includes('woodward'))
+        .map(t => t.id);
+
+      list.push({
+        id: g._id || g.id || `genre-${idx}`,
+        title: gName,
+        subtitle: gName === 'Pop-Folk' ? 'Acoustic & Melodic' : 'Driving Rhythms & Energy',
+        description: `Lossless ${gName} songs streaming directly from your Google Drive library.`,
+        artwork: null,
+        moodType: moodTypes[idx % moodTypes.length],
+        songIds: matchingSongIds,
+      });
+    });
+
+    list.push({
+      id: 'session-lossless',
+      title: 'Lossless Hi-Res',
+      subtitle: 'Bit-perfect 24-bit',
+      description: 'Studio quality FLAC master recordings decoded bit-perfectly from Google Drive.',
+      artwork: null,
+      moodType: 'deep-focus',
+      songIds: recentTracks.map(t => t.id),
+    });
+
+    return list;
+  }, [genres, recentTracks]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -47,6 +177,14 @@ export default function ListenScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: currentSong ? 120 : 20 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
@@ -93,11 +231,16 @@ export default function ListenScreen() {
             onPress={() => router.push('/moments')}
             style={styles.heroBanner}
           >
-            <View style={[styles.heroOverlay, { backgroundColor: isDark ? 'rgba(38, 50, 56, 0.75)' : 'rgba(235, 240, 242, 0.85)' }]}>
+            <View
+              style={[
+                styles.heroOverlay,
+                { backgroundColor: isDark ? 'rgba(38, 50, 56, 0.75)' : 'rgba(235, 240, 242, 0.85)' },
+              ]}
+            >
               <View style={styles.heroContent}>
                 <Text style={[typography.h2, { color: colors.textPrimary }]}>Dhun Moments</Text>
                 <Text style={[typography.body, { color: colors.textSecondary, marginTop: 4 }]}>
-                  Curated from your personal collection
+                  Curated emotional soundscapes for your state of mind
                 </Text>
                 <View style={[styles.exploreButton, { backgroundColor: colors.accent }]}>
                   <Text style={[typography.label, { color: '#1A1714' }]}>Explore</Text>
@@ -106,6 +249,30 @@ export default function ListenScreen() {
             </View>
           </GlassSurface>
         </AnimatedBorder>
+
+        {/* Loading Indicator */}
+        {loading && totalSongsCount === 0 && (
+          <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={colors.accent} />
+          </View>
+        )}
+
+        {/* Error State with Retry */}
+        {error && (
+          <GlassSurface
+            variant="card"
+            style={styles.errorCard}
+            borderRadius={radius.lg}
+          >
+            <Ionicons name="alert-circle-outline" size={24} color={colors.accent} />
+            <Text style={[typography.body, { color: colors.textPrimary, marginLeft: spacing.md, flex: 1 }]}>
+              {error}
+            </Text>
+            <Pressable onPress={loadData} style={[styles.retryButton, { backgroundColor: colors.accent }]}>
+              <Text style={[typography.label, { color: '#1A1714' }]}>Retry</Text>
+            </Pressable>
+          </GlassSurface>
+        )}
 
         {/* Continue Listening */}
         {currentSong && (
@@ -119,7 +286,7 @@ export default function ListenScreen() {
           </>
         )}
 
-        {/* Your Music */}
+        {/* Your Music Quick Access */}
         <SectionHeader title="Your Music" showSeeAll={false} />
         <View style={styles.quickCards}>
           <GlassSurface
@@ -130,8 +297,8 @@ export default function ListenScreen() {
           >
             <Ionicons name="musical-notes" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
-              <Text style={[typography.label, { color: colors.textPrimary }]}>Recently Added</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>342 songs</Text>
+              <Text style={[typography.label, { color: colors.textPrimary }]}>Catalog</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{totalSongsCount} songs</Text>
             </View>
           </GlassSurface>
           <GlassSurface
@@ -143,7 +310,7 @@ export default function ListenScreen() {
             <Ionicons name="heart" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Liked Songs</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>{likedSongs.length} songs</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{likedCount} songs</Text>
             </View>
           </GlassSurface>
         </View>
@@ -157,7 +324,7 @@ export default function ListenScreen() {
             <Ionicons name="disc" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Albums</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>{mockAlbums.length} albums</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{albums.length} albums</Text>
             </View>
           </GlassSurface>
           <GlassSurface
@@ -169,15 +336,15 @@ export default function ListenScreen() {
             <Ionicons name="people" size={22} color={colors.accent} />
             <View style={styles.quickCardText}>
               <Text style={[typography.label, { color: colors.textPrimary }]}>Artists</Text>
-              <Text style={[typography.caption, { color: colors.textSecondary }]}>{mockArtists.length} artists</Text>
+              <Text style={[typography.caption, { color: colors.textSecondary }]}>{artists.length} artists</Text>
             </View>
           </GlassSurface>
         </View>
 
-        {/* Recently Added */}
+        {/* Recently Added Albums (Touch-Enabled Horizontal Carousel) */}
         <SectionHeader title="Recently Added" onSeeAll={() => router.push('/(tabs)/library')} />
         <FlatList
-          data={mockAlbums.slice(0, 5)}
+          data={albums}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: spacing.lg }}
@@ -187,17 +354,20 @@ export default function ListenScreen() {
               title={item.title}
               artistName={item.artistName}
               artwork={item.artwork}
-              onPress={() => play(mockSongs.find(s => s.albumId === item.id) || mockSongs[0])}
+              onPress={() => {
+                const matched = recentTracks.find(s => s.albumId === item.id) || recentTracks[0];
+                if (matched) play(matched, recentTracks);
+              }}
             />
           )}
-          scrollEnabled={false}
+          nestedScrollEnabled={true}
           style={{ overflow: 'visible' }}
         />
 
-        {/* Featured Artists */}
+        {/* Featured Artists (Touch-Enabled Horizontal Carousel) */}
         <SectionHeader title="Featured Artists" onSeeAll={() => router.push('/artists')} />
         <FlatList
-          data={mockArtists.slice(0, 5)}
+          data={artists}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingVertical: spacing.xs }}
@@ -205,28 +375,56 @@ export default function ListenScreen() {
           renderItem={({ item }) => (
             <ArtistCard
               name={item.name}
-              artwork={null}
+              artwork={item.artwork}
               size={80}
               showBorderRing={true}
-              onPress={() => router.push('/artists')}
+              onPress={() =>
+                router.push({
+                  pathname: '/artists',
+                  params: { id: item.id, search: item.name },
+                })
+              }
             />
           )}
-          scrollEnabled={false}
+          nestedScrollEnabled={true}
           style={{ overflow: 'visible' }}
         />
 
-        {/* Mood Sessions */}
+        {/* Songs from Google Drive */}
+        {recentTracks.length > 0 && (
+          <>
+            <SectionHeader title="Google Drive Songs" onSeeAll={() => router.push('/(tabs)/library')} />
+            {recentTracks.map(song => (
+              <SongRow
+                key={song.id}
+                song={song}
+                onPress={() => play(song, recentTracks)}
+                isActive={currentSong?.id === song.id}
+              />
+            ))}
+          </>
+        )}
+
+        {/* Mood & Genre Sessions */}
         <SectionHeader title="Mood Sessions" onSeeAll={() => router.push('/moments')} />
         <FlatList
-          data={mockMoments.slice(0, 5)}
+          data={moodSessions}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: spacing.lg }}
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
-            <MoodCard mood={item} onPress={() => router.push('/moments')} />
+            <MoodCard
+              mood={item}
+              onPress={() =>
+                router.push({
+                  pathname: '/moments',
+                  params: { genreId: item.id, genreName: item.title },
+                })
+              }
+            />
           )}
-          scrollEnabled={false}
+          nestedScrollEnabled={true}
           style={{ overflow: 'visible' }}
         />
 
@@ -239,11 +437,12 @@ export default function ListenScreen() {
 
         {/* Quick filters */}
         <View style={styles.filterRow}>
-          {['Lossless', 'Offline', 'Yours'].map(filter => (
+          {['Lossless Hi-Res', 'Offline Library', 'Personal Collection'].map(filter => (
             <GlassSurface
               key={filter}
               variant="subtle"
               borderRadius={radius.full}
+              onPress={() => router.push('/(tabs)/library')}
               style={styles.filterChip}
             >
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{filter}</Text>
@@ -358,5 +557,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  retryButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
   },
 });

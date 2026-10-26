@@ -40,11 +40,11 @@ export function SettingsRow({
       <Text style={[typography.body, { color: colors.textPrimary, flex: 1 }]}>
         {label}
       </Text>
-      {value && (
+      {value ? (
         <Text style={[typography.bodySmall, { color: colors.textSecondary, marginRight: spacing.sm }]}>
           {value}
         </Text>
-      )}
+      ) : null}
       {showChevron && (
         <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       )}

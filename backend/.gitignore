@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Production build output
+dist/
+
+# Environment configurations and secrets
+.env
+.env.*
+!.env.example
+
+# Local OAuth credentials and generated tokens
+credentials/
+tokens.json
+*.token.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store

@@ -1,7 +1,7 @@
 // ─── Settings Screen ────────────────────────────────────────────────
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { GlassSurface } from '@/components/GlassSurface';
 import { ThemeMode } from '@/types/music';
 import { stringToColor, getInitials, safeBack } from '@/utils/helpers';
 import { useAuth } from '@/services/AuthProvider';
+import { getApiBaseUrl } from '@/services/api/apiClient';
 
 const themeLabels: Record<ThemeMode, string> = {
   auto: 'Auto (Time)',
@@ -57,27 +58,42 @@ export default function SettingsScreen() {
 
   const handleAuthAction = async () => {
     if (isAuthenticated) {
-      Alert.alert('Log Out', 'Are you sure you want to log out of Dhun?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            router.replace('/login');
+      if (Platform.OS === 'web') {
+        await logout();
+        router.replace('/login');
+      } else {
+        Alert.alert('Log Out', 'Are you sure you want to log out of Dhun?', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Log Out',
+            style: 'destructive',
+            onPress: async () => {
+              await logout();
+              router.replace('/login');
+            },
           },
-        },
-      ]);
+        ]);
+      }
     } else {
       router.push('/login');
     }
   };
 
-  const showPrototypeAlert = (feature: string) => {
+  const showProfileDetails = () => {
+    if (!user) return;
     Alert.alert(
-      'Prototype',
-      `${feature} is not yet connected. This is a frontend prototype.`,
-      [{ text: 'OK' }]
+      'Listener Profile',
+      `Display Name: ${user.name}\nEmail: ${user.email}\nAccount ID: ${user.id}\nProvider: ${user.provider || 'email'}`,
+      [{ text: 'Close' }]
+    );
+  };
+
+  const handleConfigureServer = () => {
+    const currentUrl = getApiBaseUrl();
+    Alert.alert(
+      'Dhun Backend Connection',
+      `Current Server: ${currentUrl}\n\n• For physical phone testing, ensure the phone is connected to the same Wi-Fi network as your development Mac.\n• If your Mac's IP changes, update EXPO_PUBLIC_API_URL or restart Expo.`,
+      [{ text: 'Understood' }]
     );
   };
 
@@ -103,7 +119,7 @@ export default function SettingsScreen() {
           style={styles.profileCard}
           onPress={() => {
             if (!isAuthenticated) router.push('/login');
-            else showPrototypeAlert('Profile details');
+            else showProfileDetails();
           }}
         >
           <View
@@ -180,22 +196,15 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="server"
             label="Storage & Cache"
-            value="2.4 GB used"
-            onPress={() => showPrototypeAlert('Storage management')}
-          />
-          <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
-          <SettingsRow
-            icon="logo-google"
-            label="Google Drive"
-            value="Connected"
-            onPress={() => showPrototypeAlert('Google Drive connection')}
+            value="Offline Storage"
+            onPress={() => router.push({ pathname: '/(tabs)/library' })}
           />
           <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
           <SettingsRow
             icon="download"
-            label="Downloads"
-            value="342 songs"
-            onPress={() => showPrototypeAlert('Download management')}
+            label="Downloaded Songs"
+            value="View Offline"
+            onPress={() => router.push({ pathname: '/(tabs)/library' })}
           />
           <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
           <SettingsRow
@@ -203,6 +212,13 @@ export default function SettingsScreen() {
             label="Appearance"
             value={themeLabels[themeMode]}
             onPress={handleThemeChange}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
+          <SettingsRow
+            icon="globe-outline"
+            label="Backend Server"
+            value={getApiBaseUrl().replace(/^https?:\/\//, '')}
+            onPress={handleConfigureServer}
           />
         </GlassSurface>
 
@@ -215,20 +231,21 @@ export default function SettingsScreen() {
         >
           <SettingsRow
             icon="help-circle"
-            label="Help & Support"
-            onPress={() => showPrototypeAlert('Help & Support')}
+            label="Help & Audio Guide"
+            onPress={() =>
+              Alert.alert(
+                'Dhun Audio Guide',
+                'Lossless Playback Tips:\n\n• For bit-perfect 24-bit/192kHz output, use wired headphones or an external USB DAC.\n• Bluetooth codecs (SBC/AAC) are lossy; FLAC tracks will decode bit-perfectly on-device before Bluetooth transmission.\n• Offline tracks are saved directly to encrypted app storage.',
+                [{ text: 'Got it' }]
+              )
+            }
           />
           <View style={[styles.divider, { backgroundColor: colors.borderSubtle }]} />
           <SettingsRow
             icon="information-circle"
             label="About Dhun"
-            onPress={() =>
-              Alert.alert(
-                'Dhun',
-                'Version 1.0.0\n\nYour Music, Untouched.\n\nA premium music player focused on lossless audio, offline listening, and Indian emotional identity.',
-                [{ text: 'OK' }]
-              )
-            }
+            value="v1.0.0"
+            onPress={() => router.push('/about' as any)}
           />
         </GlassSurface>
 
