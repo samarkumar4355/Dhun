@@ -35,9 +35,9 @@ interface AuthContextValue {
   recentGeneratedPassword: string | null;
   recentEmail: string | null;
   signupWithEmail: (email: string, name?: string) => Promise<{ user: AuthUser; generatedPassword: string }>;
-  signupWithGoogle: () => Promise<AuthUser>;
+  signupWithGoogle: (email?: string, displayName?: string) => Promise<AuthUser>;
   loginWithEmail: (email: string, password: string) => Promise<AuthUser>;
-  loginWithGoogle: () => Promise<AuthUser>;
+  loginWithGoogle: (email?: string, displayName?: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   getGeneratedPassword: (email: string) => string | null;
 }
@@ -172,10 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return authUser;
   }, []);
 
-  const signupWithGoogle = useCallback(async () => {
+  const signupWithGoogle = useCallback(async (customEmail?: string, customName?: string) => {
+    const emailToUse = customEmail?.trim() || 'listener@dhun.audio';
+    const nameToUse = customName?.trim() || (customEmail ? customEmail.split('@')[0] : 'Google Listener');
     const res = await api.loginWithGoogle({
-      email: 'listener@dhun.audio',
-      displayName: 'Google Listener',
+      email: emailToUse,
+      displayName: nameToUse,
     });
 
     if (!res.success || !res.data) {
@@ -197,8 +199,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return authUser;
   }, []);
 
-  const loginWithGoogle = useCallback(async () => {
-    return signupWithGoogle();
+  const loginWithGoogle = useCallback(async (customEmail?: string, customName?: string) => {
+    return signupWithGoogle(customEmail, customName);
   }, [signupWithGoogle]);
 
   const logout = useCallback(async () => {

@@ -62,10 +62,10 @@ export default function SignUpScreen() {
     setErrorMessage(null);
     try {
       setGoogleLoading(true);
-      await signupWithGoogle();
+      await signupWithGoogle(email, name);
       router.replace('/(tabs)/listen');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Google sign-up failed.');
+      setErrorMessage(err.message || 'Google sign-up failed. Please ensure the backend is connected.');
     } finally {
       setGoogleLoading(false);
     }

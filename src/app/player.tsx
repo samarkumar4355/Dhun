@@ -14,6 +14,7 @@ import { FlipLyricsCard } from '@/components/FlipLyricsCard';
 import { GlassSurface } from '@/components/GlassSurface';
 import { AnimatedBorder } from '@/components/AnimatedBorder';
 import { formatDuration, safeBack } from '@/utils/helpers';
+import { api } from '@/services/api/apiClient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ARTWORK_SIZE = Math.min(SCREEN_WIDTH - 64, 340);
@@ -45,7 +46,22 @@ export default function PlayerScreen() {
 
   // ─── Lyrics flip state ──────────────────────────────────────────
   const [showLyrics, setShowLyrics] = useState(false);
+  const [activeLyrics, setActiveLyrics] = useState<string | null>(currentSong?.lyrics ?? null);
   const prevSongIdRef = useRef(currentSong?.id);
+
+  // Sync / fetch lyrics when song changes
+  useEffect(() => {
+    setActiveLyrics(currentSong?.lyrics ?? null);
+    if (currentSong?.id && !currentSong.lyrics) {
+      api.getTrackLyrics(currentSong.id)
+        .then(res => {
+          if (res?.data?.lyrics) {
+            setActiveLyrics(res.data.lyrics);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentSong?.id, currentSong?.lyrics]);
 
   // Reset to artwork face when the track changes
   useEffect(() => {
@@ -112,7 +128,8 @@ export default function PlayerScreen() {
             title={currentSong.title}
             artistName={currentSong.artistName}
             artwork={currentSong.artwork}
-            lyrics={currentSong.lyrics}
+            lyrics={activeLyrics || currentSong.lyrics}
+            hasLyrics={Boolean((activeLyrics || currentSong.lyrics)?.trim()?.length)}
             songId={currentSong.id}
             showLyrics={showLyrics}
             onToggle={handleFlipToggle}

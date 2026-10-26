@@ -70,10 +70,10 @@ export default function LoginScreen() {
     setErrorMessage(null);
     try {
       setGoogleLoading(true);
-      await loginWithGoogle();
+      await loginWithGoogle(email);
       router.replace('/(tabs)/listen');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Google sign-in failed.');
+      setErrorMessage(err.message || 'Google sign-in failed. Please ensure the backend is connected.');
     } finally {
       setGoogleLoading(false);
     }

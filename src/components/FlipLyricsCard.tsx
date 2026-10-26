@@ -30,6 +30,8 @@ interface FlipLyricsCardProps {
   artistName: string;
   /** Artwork URI — null falls back to initials placeholder */
   artwork: string | null;
+  /** Whether track has lyrics */
+  hasLyrics?: boolean;
   /** Lyrics text — undefined/null/empty shows unavailable state */
   lyrics?: string | null;
   /** Unique song id — used to detect track changes */
@@ -53,62 +55,46 @@ export function FlipLyricsCard({
   artistName,
   artwork,
   lyrics,
+  hasLyrics,
   songId,
   showLyrics,
   onToggle,
 }: FlipLyricsCardProps) {
   const { colors } = useTheme();
   const rotation = useSharedValue(0);
-  const isAnimating = useRef(false);
   const prevSongId = useRef(songId);
+  const isLyricsAvailable = Boolean(hasLyrics || (lyrics && lyrics.trim().length > 0));
 
   // ─── Drive flip animation from showLyrics prop ────────────────────
   useEffect(() => {
     const target = showLyrics ? 180 : 0;
     if (rotation.value === target) return;
 
-    isAnimating.current = true;
     rotation.value = withTiming(target, {
       duration: FLIP_DURATION,
       easing: FLIP_EASING,
-    }, (finished) => {
-      if (finished) {
-        runOnJS(markAnimationDone)();
-      }
     });
   }, [showLyrics]);
-
-  const markAnimationDone = useCallback(() => {
-    isAnimating.current = false;
-  }, []);
 
   // ─── Reset to artwork face instantly on track change ──────────────
   useEffect(() => {
     if (prevSongId.current !== songId) {
       prevSongId.current = songId;
-      // Already handled by parent resetting showLyrics → false,
-      // but snap instantly instead of animating for track changes
       rotation.value = 0;
     }
   }, [songId]);
 
-  // ─── Guard against rapid taps ─────────────────────────────────────
-  const handleToggle = useCallback(() => {
-    if (isAnimating.current) return;
-    onToggle();
-  }, [onToggle]);
-
   // ─── Front face animated style (artwork) ──────────────────────────
   const frontStyle = useAnimatedStyle(() => {
     const rotateY = interpolate(rotation.value, [0, 180], [0, 180]);
-    const opacity = interpolate(rotation.value, [0, 89, 90, 180], [1, 1, 0, 0]);
+    const opacity = interpolate(rotation.value, [0, 85, 95, 180], [1, 1, 0, 0]);
     return {
       transform: [
         { perspective: 1200 },
         { rotateY: `${rotateY}deg` },
       ],
       opacity,
-      backfaceVisibility: 'hidden' as const,
+      zIndex: rotation.value >= 90 ? 1 : 2,
     };
   });
 
@@ -116,24 +102,26 @@ export function FlipLyricsCard({
   const backStyle = useAnimatedStyle(() => {
     // Start at 180 and rotate to 0 so text is not mirrored
     const rotateY = interpolate(rotation.value, [0, 180], [180, 0]);
-    const opacity = interpolate(rotation.value, [0, 89, 90, 180], [0, 0, 1, 1]);
+    const opacity = interpolate(rotation.value, [0, 85, 95, 180], [0, 0, 1, 1]);
     return {
       transform: [
         { perspective: 1200 },
         { rotateY: `${rotateY}deg` },
       ],
       opacity,
-      backfaceVisibility: 'hidden' as const,
+      zIndex: rotation.value >= 90 ? 2 : 1,
     };
   });
-
-  const hasLyrics = !!lyrics?.trim();
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       {/* ─── Front Face: Artwork ──────────────────────────────────── */}
-      <Animated.View style={[styles.face, { width: size, height: size }, frontStyle]}>
-        <View
+      <Animated.View
+        pointerEvents={showLyrics ? 'none' : 'auto'}
+        style={[styles.face, { width: size, height: size }, frontStyle]}
+      >
+        <Pressable
+          onPress={onToggle}
           style={[
             styles.artworkCard,
             {
@@ -143,6 +131,8 @@ export function FlipLyricsCard({
               borderRadius: radius['2xl'],
             },
           ]}
+          accessibilityRole="button"
+          accessibilityLabel="See lyrics"
         >
           <Text style={[styles.artworkInitials, { fontSize: size * 0.2 }]}>
             {getInitials(title)}
@@ -150,29 +140,32 @@ export function FlipLyricsCard({
 
           {/* See Lyrics overlay button */}
           <Pressable
-            onPress={handleToggle}
+            onPress={onToggle}
             style={[styles.lyricsToggle, { backgroundColor: colors.overlay }]}
             accessibilityRole="button"
             accessibilityLabel="See lyrics"
             accessibilityState={{ expanded: false }}
-            hitSlop={4}
+            hitSlop={8}
           >
             <Ionicons name="document-text-outline" size={14} color="#FFFFFF" />
             <Text style={styles.lyricsToggleText}>Lyrics</Text>
           </Pressable>
-        </View>
+        </Pressable>
       </Animated.View>
 
       {/* ─── Back Face: Lyrics ────────────────────────────────────── */}
-      <Animated.View style={[styles.face, styles.backFace, { width: size, height: size }, backStyle]}>
+      <Animated.View
+        pointerEvents={showLyrics ? 'auto' : 'none'}
+        style={[styles.face, styles.backFace, { width: size, height: size }, backStyle]}
+      >
         <LyricsBackFace
           size={size}
           title={title}
           artistName={artistName}
           lyrics={lyrics}
-          hasLyrics={hasLyrics}
+          hasLyrics={isLyricsAvailable}
           colors={colors}
-          onHide={handleToggle}
+          onHide={onToggle}
         />
       </Animated.View>
     </View>
@@ -198,6 +191,8 @@ function LyricsBackFace({
   colors: DhunColors;
   onHide: () => void;
 }) {
+  const showContent = Boolean(hasLyrics || (lyrics && lyrics.trim().length > 0));
+
   return (
     <View
       style={[
@@ -235,7 +230,7 @@ function LyricsBackFace({
       </View>
 
       {/* Lyrics body */}
-      {hasLyrics ? (
+      {showContent ? (
         <ScrollView
           style={styles.lyricsScroll}
           contentContainerStyle={styles.lyricsScrollContent}

@@ -167,6 +167,6 @@ export function AnimatedBorder({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
 });

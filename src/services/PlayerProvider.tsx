@@ -20,6 +20,33 @@ import {
 import { Song } from '@/types/music';
 import { api, formatBackendTrackToSong } from './api/apiClient';
 import { offlineService } from './offlineService';
+import { tokenStorage } from './tokenStorage';
+import { storage } from '@/utils/storage';
+
+const LOCAL_FAVORITES_KEY = 'dhun_local_favorite_ids';
+
+function getLocalFavorites(): Set<string> {
+  try {
+    const raw = storage.getItem(LOCAL_FAVORITES_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveLocalFavorite(songId: string, isFav: boolean) {
+  try {
+    const favs = getLocalFavorites();
+    if (isFav) {
+      favs.add(songId);
+    } else {
+      favs.delete(songId);
+    }
+    storage.setItem(LOCAL_FAVORITES_KEY, JSON.stringify(Array.from(favs)));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 interface PlayerState {
   currentSong: Song | null;
@@ -141,12 +168,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     async (song: Song, customQueue?: Song[]) => {
       try {
         setPlaybackError(null);
+        const favs = getLocalFavorites();
+        const effectiveSong = favs.has(song.id) ? { ...song, isFavorite: true } : song;
         if (customQueue && customQueue.length > 0) {
-          setQueue(customQueue);
+          setQueue(customQueue.map(s => (favs.has(s.id) ? { ...s, isFavorite: true } : s)));
         }
 
-        setCurrentSong(song);
-        currentSongRef.current = song;
+        setCurrentSong(effectiveSong);
+        currentSongRef.current = effectiveSong;
         setProgress(0);
         setCurrentTime(0);
 
@@ -284,21 +313,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       prev.map(s => (s.id === songId ? { ...s, isFavorite: nextFavState } : s))
     );
 
-    // Sync with real backend
+    saveLocalFavorite(songId, nextFavState);
+
+    // Sync with real backend if authenticated
     try {
-      if (nextFavState) {
-        await api.addFavorite(songId);
-      } else {
-        await api.removeFavorite(songId);
+      const token = await tokenStorage.getAccessToken();
+      if (token) {
+        if (nextFavState) {
+          await api.addFavorite(songId);
+        } else {
+          await api.removeFavorite(songId);
+        }
       }
-    } catch {
-      // Revert optimistic update if API failed
-      if (currentSong && currentSong.id === songId) {
-        setCurrentSong({ ...currentSong, isFavorite: isCurrentlyFav });
-      }
-      setQueue(prev =>
-        prev.map(s => (s.id === songId ? { ...s, isFavorite: isCurrentlyFav } : s))
-      );
+    } catch (err) {
+      console.warn('Backend favorite sync notice:', err);
     }
   }, [currentSong]);
 
