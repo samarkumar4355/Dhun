@@ -6,7 +6,7 @@
     "@expo/ui": "~58.0.23",
     "@expo/vector-icons": "^15.0.2",
     "expo": "~58.0.19",
-    "expo-av": "^16.0.8",
+    "expo-audio": "~58.0.10",
     "expo-build-properties": "~58.0.11",
     "expo-constants": "~58.0.13",
     "expo-device": "~58.0.5",
@@ -45,14 +45,5 @@
     "web": "expo start --web",
     "lint": "expo lint"
   },
-  "private": true,
-  "expo": {
-    "autolinking": {
-      "android": {
-        "buildFromSource": [
-          "expo-av"
-        ]
-      }
-    }
-  }
+  "private": true
 }
