@@ -72,8 +72,8 @@ export function getApiBaseUrl(): string {
   // Android platform detection
   if (Platform.OS === 'android') {
     if (Device.isDevice) {
-      // Physical Android phone on the same Wi-Fi network as the dev machine
-      return 'http://192.168.1.230:5001';
+      // Physical Android phone connected via USB cable (adb reverse tcp:5001 tcp:5001)
+      return 'http://127.0.0.1:5001';
     }
     // Android Studio Emulator loopback
     return 'http://10.0.2.2:5001';
