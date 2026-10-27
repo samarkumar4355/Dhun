@@ -211,7 +211,7 @@ async function main() {
   const totalBatches = Math.ceil(remainingTracks.length / batchSize);
   console.log(`\n[Step 4/6] Processing ${Math.min(totalBatches, maxBatches)} batch(es) of size ${batchSize}...\n`);
 
-  const audioStagingDir = path.join(env.localImportFolder, 'audio');
+  const audioStagingDir = path.join(env.tempStagingDir, 'audio');
   if (!fs.existsSync(audioStagingDir)) {
     fs.mkdirSync(audioStagingDir, { recursive: true });
   }
@@ -316,6 +316,8 @@ async function main() {
     const importReport = await musicImporter.runImport({
       dryRun: false,
       maxTracks: 500, // process all files in batch
+      sourceDir: audioStagingDir,
+      cleanupLocalSourceAfterUpload: true,
       confirmAccount: true,
       expectedAccountEmail: accountInfo.emailAddress,
     });

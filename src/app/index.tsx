@@ -104,14 +104,8 @@ export default function SplashScreen() {
           <DhunWordmark size="large" />
         </Animated.View>
 
-        <Animated.View style={[styles.taglineContainer, taglineStyle]}>
-          <Animated.Text style={[styles.tagline, { color: colors.textSecondary }]}>
-            Your Music, Untouched.
-          </Animated.Text>
-        </Animated.View>
-
         <Animated.View style={[styles.phraseContainer, phraseStyle]}>
-          <Animated.Text style={[styles.phrase, { color: colors.textMuted }]}>
+          <Animated.Text style={[styles.phrase, { color: colors.accentWarm || '#FFD700', letterSpacing: 1.5 }]}>
             Made for every feeling.
           </Animated.Text>
         </Animated.View>

@@ -384,7 +384,7 @@ export async function discoverAllIndianTracks(targetCount = 995): Promise<Discov
         console.warn(`  ⚠️ Failed to fetch metadata for ${src.identifier}: HTTP ${res.status}`);
         continue;
       }
-      const data = await res.json();
+      const data: any = await res.json();
       const files = (data.files || []).filter(
         (f: any) =>
           (f.format === 'VBR MP3' || f.format === 'MP3' || f.name.endsWith('.mp3')) &&

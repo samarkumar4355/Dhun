@@ -179,6 +179,16 @@ router.get('/:id/stream', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/tracks/:id/artwork
+ * Streams track album artwork image from storage.
+ */
+router.get('/:id/artwork', async (req: Request, res: Response) => {
+  const rawId = req.params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+  await playbackService.streamArtwork(id, req, res);
+});
+
+/**
  * GET /api/v1/tracks/:id/lyrics
  * Retrieves the lyrics document for a track.
  */

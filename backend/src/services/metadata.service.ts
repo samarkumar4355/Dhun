@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { parseFile } from 'music-metadata';
+import { parseFile, parseBuffer } from 'music-metadata';
 
 export interface ExtractedTrackData {
   title: string;
@@ -36,6 +36,8 @@ export interface ExtractedTrackData {
   missingFields: string[];
 
   // Curated metadata & source fields
+  primaryArtist?: string;
+  creditedArtists?: string[];
   language?: string;
   composer?: string;
   lyricist?: string;
@@ -43,10 +45,12 @@ export interface ExtractedTrackData {
   sourceUrl?: string;
   lyricsSource?: string;
   lyricsLanguage?: string;
+  driveArtistFolderId?: string;
   driveFolderId?: string;
   driveAudioFileId?: string;
   driveArtworkFileId?: string;
   driveLyricsFileId?: string;
+  driveMetadataFileId?: string;
 }
 
 export class MetadataService {
@@ -401,9 +405,9 @@ export class MetadataService {
     }
 
     return {
-      title,
-      artist,
-      album,
+      title: title || 'Unknown Title',
+      artist: artist || 'Unknown Artist',
+      album: album || 'Unknown Album',
       year,
       genre,
       trackNumber: common.track?.no ?? companionMeta?.trackNumber ?? undefined,
@@ -440,11 +444,132 @@ export class MetadataService {
   }
 
   /**
-   * Generates a clean metadata.json document for upload to Google Drive.
+   * Extracts technical and tag metadata directly from an in-memory Buffer
+   * without creating or reading files on the local disk.
    */
-  generateMetadataJson(data: ExtractedTrackData) {
+  async extractMetadataFromBuffer(
+    buffer: Buffer,
+    originalFileName: string,
+    mimeTypeOverride?: string
+  ): Promise<ExtractedTrackData> {
+    const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const inferredMime = mimeTypeOverride || this.getMimeType(originalFileName);
+
+    // Parse audio metadata using music-metadata parseBuffer
+    const parsed = await parseBuffer(buffer, { mimeType: inferredMime, size: buffer.length });
+    const common = parsed.common;
+    const format = parsed.format;
+
+    const missingFields: string[] = [];
+    const rawBaseName = path.basename(originalFileName, path.extname(originalFileName));
+    const filenameFallback = this.parseFilenameFallback(rawBaseName);
+
+    let title = common.title?.trim();
+    if (!title) {
+      title = filenameFallback.title || rawBaseName;
+      missingFields.push('title');
+    }
+
+    let artist =
+      common.artist?.trim() ||
+      (Array.isArray(common.artists) ? common.artists.find((a: any) => typeof a === 'string' && a.trim())?.trim() : undefined) ||
+      common.albumartist?.trim() ||
+      filenameFallback.artist;
+
+    if (!artist) {
+      artist = 'Unknown Artist';
+      missingFields.push('artist');
+    }
+
+    let album = common.album?.trim();
+    if (!album) {
+      album = 'Unknown Album';
+      missingFields.push('album');
+    }
+
+    if (!common.year) missingFields.push('year');
+    if (!common.track?.no) missingFields.push('trackNumber');
+
+    let embeddedArtwork: { format: string; data: Buffer } | undefined;
+    if (common.picture && common.picture.length > 0) {
+      const pic = common.picture[0];
+      embeddedArtwork = {
+        format: pic.format,
+        data: Buffer.from(pic.data),
+      };
+    } else {
+      missingFields.push('artwork');
+    }
+
+    let lyricsText: string | undefined;
+    if (common.lyrics && common.lyrics.length > 0) {
+      const candidate = common.lyrics[0].text;
+      if (this.isValidLyrics(candidate)) {
+        lyricsText = candidate;
+      }
+    }
+    if (!lyricsText) {
+      missingFields.push('lyrics');
+    }
+
+    const codec = format.codec || path.extname(originalFileName).replace('.', '').toUpperCase();
+    const lossless = this.isLosslessCodec(codec, format.container);
+
+    if (!format.sampleRate) missingFields.push('sampleRate');
+    if (!format.bitsPerSample) missingFields.push('bitDepth');
+
+    return {
+      title,
+      artist,
+      album,
+      year: common.year,
+      genre: common.genre || [],
+      trackNumber: common.track?.no ?? undefined,
+      discNumber: common.disk?.no ?? undefined,
+
+      durationSeconds: format.duration ? Math.round(format.duration) : 0,
+      codec,
+      lossless,
+      sampleRate: format.sampleRate,
+      bitDepth: format.bitsPerSample,
+      bitrate: format.bitrate,
+      numberOfChannels: format.numberOfChannels,
+
+      fileHash,
+      originalFileName,
+      fileSizeBytes: buffer.length,
+      mimeType: inferredMime,
+
+      embeddedArtwork,
+      lyricsText,
+      missingFields,
+    };
+  }
+
+  /**
+   * Generates a clean metadata.json document for upload to Google Drive.
+   * Accurately details song title, primary artist, all credited artists, technical specs,
+   * asset flags, and Google Drive folder and file IDs.
+   */
+  generateMetadataJson(
+    data: ExtractedTrackData,
+    driveIds: {
+      artistFolderId?: string;
+      songFolderId?: string;
+      audioFileId?: string;
+      artworkFileId?: string;
+      lyricsFileId?: string;
+      metadataFileId?: string;
+    } = {}
+  ) {
+    const rawArtist = data.artist || 'Unknown Artist';
+    const primaryArtist = data.primaryArtist || (rawArtist.includes(' & ') ? rawArtist.split(' & ')[0].trim() : rawArtist);
+    const creditedArtists = data.creditedArtists && data.creditedArtists.length > 0 ? data.creditedArtists : [rawArtist];
+
     return {
       title: data.title,
+      primaryArtist,
+      creditedArtists,
       artist: data.artist,
       album: data.album,
       year: data.year ?? null,
@@ -469,9 +594,17 @@ export class MetadataService {
         mimeType: data.mimeType,
         sha256: data.fileHash,
       },
+      googleDrive: {
+        artistFolderId: driveIds.artistFolderId || data.driveArtistFolderId || null,
+        songFolderId: driveIds.songFolderId || data.driveFolderId || null,
+        audioFileId: driveIds.audioFileId || data.driveAudioFileId || null,
+        artworkFileId: driveIds.artworkFileId || data.driveArtworkFileId || null,
+        lyricsFileId: driveIds.lyricsFileId || data.driveLyricsFileId || null,
+        metadataFileId: driveIds.metadataFileId || data.driveMetadataFileId || null,
+      },
       assets: {
-        hasArtwork: Boolean(data.embeddedArtwork || data.externalArtworkPath),
-        hasLyrics: Boolean(data.lyricsText && this.isValidLyrics(data.lyricsText)),
+        hasArtwork: Boolean(data.embeddedArtwork || data.externalArtworkPath || driveIds.artworkFileId),
+        hasLyrics: Boolean((data.lyricsText && this.isValidLyrics(data.lyricsText)) || driveIds.lyricsFileId),
         lyricsSource: data.lyricsSource ?? (data.lyricsText ? 'embedded/adjacent' : null),
         lyricsLanguage: data.lyricsLanguage ?? (data.lyricsText ? (data.language || 'Hindi') : null),
       },

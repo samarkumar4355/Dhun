@@ -31,7 +31,8 @@ export interface ITrack extends Document {
   mimeType: string;
 
   // Google Drive Reference IDs
-  driveFolderId: string;        // Subfolder ID for this track
+  driveArtistFolderId?: string; // Canonical artist folder ID in Dhun Music Library
+  driveFolderId: string;        // Dedicated song folder ID inside artist folder
   driveAudioFileId: string;     // Google Drive file ID of the original audio file
   driveArtworkFileId?: string;  // Google Drive file ID for cover art
   driveLyricsFileId?: string;   // Google Drive file ID for lyrics file (.lrc / .txt)
@@ -94,6 +95,7 @@ const TrackSchema: Schema = new Schema(
     fileSizeBytes: { type: Number, required: true },
     mimeType: { type: String, required: true },
 
+    driveArtistFolderId: { type: String, trim: true },
     driveFolderId: { type: String, required: true },
     driveAudioFileId: { type: String, required: true },
     driveArtworkFileId: { type: String },

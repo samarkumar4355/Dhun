@@ -2,8 +2,8 @@
 // A premium 3D-flipping card that reveals lyrics on the back face.
 // Uses React Native Reanimated for UI-thread driven Y-axis rotation.
 
-import React, { useEffect, useCallback, useRef } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, AccessibilityInfo } from 'react-native';
+import React, { useEffect, useCallback, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, AccessibilityInfo, Image } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -127,28 +127,46 @@ export function FlipLyricsCard({
             {
               width: size,
               height: size,
-              backgroundColor: stringToColor(title),
+              backgroundColor: 'rgba(32, 22, 46, 0.95)',
               borderRadius: radius['2xl'],
+              overflow: 'hidden',
+              borderColor: 'rgba(229, 184, 66, 0.35)',
+              borderWidth: 1.5,
             },
           ]}
           accessibilityRole="button"
           accessibilityLabel="See lyrics"
         >
-          <Text style={[styles.artworkInitials, { fontSize: size * 0.2 }]}>
-            {getInitials(title)}
-          </Text>
+          {artwork ? (
+            <Image
+              source={{ uri: artwork }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
+          ) : (
+            <Text style={[styles.artworkInitials, { fontSize: size * 0.2, color: colors.accentWarm || '#FFD700' }]}>
+              {getInitials(title)}
+            </Text>
+          )}
 
           {/* See Lyrics overlay button */}
           <Pressable
             onPress={onToggle}
-            style={[styles.lyricsToggle, { backgroundColor: colors.overlay }]}
+            style={[
+              styles.lyricsToggle,
+              {
+                backgroundColor: 'rgba(12, 9, 17, 0.75)',
+                borderColor: 'rgba(229, 184, 66, 0.35)',
+                borderWidth: 1,
+              },
+            ]}
             accessibilityRole="button"
             accessibilityLabel="See lyrics"
             accessibilityState={{ expanded: false }}
             hitSlop={8}
           >
-            <Ionicons name="document-text-outline" size={14} color="#FFFFFF" />
-            <Text style={styles.lyricsToggleText}>Lyrics</Text>
+            <Ionicons name="document-text-outline" size={14} color="#FFD700" />
+            <Text style={[styles.lyricsToggleText, { color: '#FFF8E7' }]}>Lyrics</Text>
           </Pressable>
         </Pressable>
       </Animated.View>

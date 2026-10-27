@@ -1,7 +1,5 @@
-// ─── Now Playing Screen ─────────────────────────────────────────────
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions, PanResponder, Modal, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +26,8 @@ export default function PlayerScreen() {
     isPlaying,
     progress,
     currentTime,
+    queue,
+    play,
     shuffle,
     repeat,
     pause,
@@ -43,6 +43,48 @@ export default function PlayerScreen() {
   } = usePlayer();
 
   const [trackWidth, setTrackWidth] = useState(SCREEN_WIDTH - 48);
+  const trackWidthRef = useRef(SCREEN_WIDTH - 48);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekProgress, setSeekProgress] = useState(0);
+  const [showQueueModal, setShowQueueModal] = useState(false);
+
+  useEffect(() => {
+    trackWidthRef.current = trackWidth;
+  }, [trackWidth]);
+
+  // Gesture-driven pan responder for scrubbing audio duration
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        setIsSeeking(true);
+        if (trackWidthRef.current > 0) {
+          const x = evt.nativeEvent.locationX;
+          const fraction = Math.max(0, Math.min(1, x / trackWidthRef.current));
+          setSeekProgress(fraction);
+        }
+      },
+      onPanResponderMove: (evt) => {
+        if (trackWidthRef.current > 0) {
+          const x = evt.nativeEvent.locationX;
+          const fraction = Math.max(0, Math.min(1, x / trackWidthRef.current));
+          setSeekProgress(fraction);
+        }
+      },
+      onPanResponderRelease: (evt) => {
+        if (trackWidthRef.current > 0) {
+          const x = evt.nativeEvent.locationX;
+          const fraction = Math.max(0, Math.min(1, x / trackWidthRef.current));
+          seekTo(fraction);
+        }
+        setIsSeeking(false);
+      },
+      onPanResponderTerminate: () => {
+        setIsSeeking(false);
+      },
+    })
+  ).current;
 
   // ─── Lyrics flip state ──────────────────────────────────────────
   const [showLyrics, setShowLyrics] = useState(false);
@@ -94,11 +136,11 @@ export default function PlayerScreen() {
         </Pressable>
         <Text style={[typography.metadata, { color: colors.textSecondary }]}>NOW PLAYING</Text>
         <Pressable
-          onPress={() => {}}
+          onPress={() => setShowQueueModal(true)}
           hitSlop={12}
           accessibilityLabel="Queue"
         >
-          <Ionicons name="list" size={24} color={colors.textPrimary} />
+          <Ionicons name="list" size={24} color={colors.accentWarm || colors.textPrimary} />
         </Pressable>
       </View>
 
@@ -185,44 +227,60 @@ export default function PlayerScreen() {
         </View>
       </View>
 
-      {/* Progress */}
-      <View style={styles.progressSection}>
-        <Pressable
-          hitSlop={{ top: 12, bottom: 12, left: 0, right: 0 }}
-          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-          onPress={(e) => {
-            if (trackWidth > 0) {
-              const fraction = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidth));
-              seekTo(fraction);
-            }
-          }}
-          style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}
-        >
-          <View
-            style={[
-              styles.progressFill,
-              { backgroundColor: colors.progressFill, width: `${progress * 100}%` },
-            ]}
-          />
-          <View
-            style={[
-              styles.progressThumb,
-              {
-                backgroundColor: colors.accent,
-                left: `${progress * 100}%`,
-              },
-            ]}
-          />
-        </Pressable>
-        <View style={styles.timeRow}>
-          <Text style={[typography.caption, { color: colors.textMuted }]}>
-            {formatDuration(currentTime)}
-          </Text>
-          <Text style={[typography.caption, { color: colors.textMuted }]}>
-            {formatDuration(currentSong.duration)}
-          </Text>
-        </View>
-      </View>
+      {/* Progress / Interactive Duration Slider */}
+      {(() => {
+        const activeProgress = isSeeking ? seekProgress : progress;
+        const activeCurrentTime = isSeeking
+          ? Math.floor(seekProgress * (currentSong.duration || 1))
+          : currentTime;
+
+        return (
+          <View style={styles.progressSection}>
+            <View
+              {...panResponder.panHandlers}
+              onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+              style={styles.scrubberTouchable}
+            >
+              <View style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      backgroundColor: colors.accentWarm || colors.progressFill,
+                      width: `${Math.min(100, Math.max(0, activeProgress * 100))}%`,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.progressThumb,
+                    {
+                      backgroundColor: colors.accentWarm || '#FFD700',
+                      left: `${Math.min(100, Math.max(0, activeProgress * 100))}%`,
+                      transform: [{ scale: isSeeking ? 1.4 : 1 }],
+                      borderColor: '#09080E',
+                      borderWidth: 2,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+            <View style={styles.timeRow}>
+              <Text
+                style={[
+                  typography.caption,
+                  { color: isSeeking ? colors.accentWarm || '#FFD700' : colors.textMuted },
+                ]}
+              >
+                {formatDuration(activeCurrentTime)}
+              </Text>
+              <Text style={[typography.caption, { color: colors.textMuted }]}>
+                {formatDuration(currentSong.duration)}
+              </Text>
+            </View>
+          </View>
+        );
+      })()}
 
       {/* Controls */}
       <View style={styles.controls}>
@@ -296,6 +354,101 @@ export default function PlayerScreen() {
         />
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} style={{ marginLeft: spacing.sm }} />
       </GlassSurface>
+
+      {/* Up Next / Queue Modal Sheet */}
+      <Modal
+        visible={showQueueModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowQueueModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowQueueModal(false)}
+          />
+          <GlassSurface
+            variant="elevated"
+            borderRadius={radius['2xl']}
+            showTopHighlight
+            style={[styles.queueSheet, { backgroundColor: 'rgba(18, 13, 24, 0.96)' }]}
+          >
+            {/* Queue Header */}
+            <View style={styles.queueHeader}>
+              <View>
+                <Text style={[typography.h3, { color: colors.accentWarm || '#FFD700' }]}>
+                  Up Next / Queue
+                </Text>
+                <Text style={[typography.caption, { color: colors.textSecondary, marginTop: 2 }]}>
+                  {queue.length} songs in queue
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowQueueModal(false)}
+                hitSlop={12}
+                style={[styles.queueCloseBtn, { backgroundColor: 'rgba(229, 184, 66, 0.15)' }]}
+              >
+                <Ionicons name="close" size={20} color={colors.accentWarm || '#FFD700'} />
+              </Pressable>
+            </View>
+
+            {/* Queue List */}
+            <FlatList
+              data={queue}
+              keyExtractor={(item) => `queue-${item.id}`}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
+              renderItem={({ item, index }) => {
+                const isItemPlaying = currentSong.id === item.id;
+                return (
+                  <Pressable
+                    onPress={() => {
+                      play(item, queue);
+                      setShowQueueModal(false);
+                    }}
+                    style={[
+                      styles.queueItem,
+                      isItemPlaying && {
+                        backgroundColor: 'rgba(229, 184, 66, 0.14)',
+                        borderColor: 'rgba(229, 184, 66, 0.40)',
+                        borderWidth: 1,
+                        borderRadius: radius.md,
+                      },
+                    ]}
+                  >
+                    <View style={styles.queueIndexBox}>
+                      {isItemPlaying ? (
+                        <Ionicons name="volume-high" size={16} color={colors.accentWarm || '#FFD700'} />
+                      ) : (
+                        <Text style={[typography.caption, { color: colors.textMuted }]}>
+                          {index + 1}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          typography.label,
+                          { color: isItemPlaying ? colors.accentWarm || '#FFD700' : colors.textPrimary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.title}
+                      </Text>
+                      <Text style={[typography.caption, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {item.artistName}
+                      </Text>
+                    </View>
+                    <Text style={[typography.caption, { color: colors.textMuted, marginLeft: spacing.sm }]}>
+                      {formatDuration(item.duration)}
+                    </Text>
+                  </Pressable>
+                );
+              }}
+            />
+          </GlassSurface>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -338,27 +491,31 @@ const styles = StyleSheet.create({
   progressSection: {
     paddingVertical: spacing.md,
   },
+  scrubberTouchable: {
+    paddingVertical: 12,
+    justifyContent: 'center',
+  },
   progressTrack: {
-    height: 4,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 2.5,
     position: 'relative',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 2,
+    borderRadius: 2.5,
   },
   progressThumb: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     position: 'absolute',
-    top: -5,
-    marginLeft: -7,
+    top: -5.5,
+    marginLeft: -8,
   },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   controls: {
     flexDirection: 'row',
@@ -388,5 +545,47 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 0.5,
     marginTop: spacing.sm,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 4, 8, 0.70)',
+    justifyContent: 'flex-end',
+  },
+  queueSheet: {
+    maxHeight: '75%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(229, 184, 66, 0.35)',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  queueHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(229, 184, 66, 0.15)',
+    marginBottom: spacing.md,
+  },
+  queueCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  queueItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  queueIndexBox: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
   },
 });

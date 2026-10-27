@@ -35,25 +35,47 @@ export class ApiError extends Error {
 }
 
 import * as Device from 'expo-device';
+import { storage } from '@/utils/storage';
+
+export const USB_BASE_URL = 'http://127.0.0.1:5001';
+export const LAN_BASE_URL = 'http://192.168.1.17:5001';
 
 let customBaseUrl: string | null = null;
+let activeBaseUrl: string | null = null;
+
+try {
+  activeBaseUrl = storage.getItem('dhun_active_api_base_url');
+} catch {}
 
 export function setApiBaseUrl(url: string | null) {
   customBaseUrl = url ? url.trim().replace(/\/+$/, '') : null;
+  activeBaseUrl = customBaseUrl;
+  try {
+    if (customBaseUrl) {
+      storage.setItem('dhun_active_api_base_url', customBaseUrl);
+    } else {
+      storage.removeItem('dhun_active_api_base_url');
+    }
+  } catch {}
 }
 
 /**
  * Resolves the API Base URL based on environment and network context:
  * 1. User-customized Base URL if configured.
- * 2. Explicit EXPO_PUBLIC_API_URL environment variable.
- * 3. Physical device connected via Expo Go / Metro (dynamically resolves host machine LAN IP from hostUri on port 5001).
- * 4. Physical Android phone standalone fallback (reachable local LAN IP on port 5001).
- * 5. Android Emulator loopback (10.0.2.2:5001).
- * 6. iOS Simulator / Web (localhost:5001).
+ * 2. Active verified Base URL (persisted across sessions).
+ * 3. Explicit EXPO_PUBLIC_API_URL environment variable.
+ * 4. Physical device connected via Expo Go / Metro (dynamically resolves host machine LAN IP from hostUri on port 5001).
+ * 5. Physical Android phone standalone fallback (defaults to USB 127.0.0.1, auto-falls back to Wi-Fi 192.168.1.17).
+ * 6. Android Emulator loopback (10.0.2.2:5001).
+ * 7. iOS Simulator / Web (localhost:5001).
  */
 export function getApiBaseUrl(): string {
   if (customBaseUrl) {
     return customBaseUrl;
+  }
+
+  if (activeBaseUrl) {
+    return activeBaseUrl;
   }
 
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -73,7 +95,7 @@ export function getApiBaseUrl(): string {
   if (Platform.OS === 'android') {
     if (Device.isDevice) {
       // Physical Android phone connected via USB cable (adb reverse tcp:5001 tcp:5001)
-      return 'http://127.0.0.1:5001';
+      return USB_BASE_URL;
     }
     // Android Studio Emulator loopback
     return 'http://10.0.2.2:5001';
@@ -127,7 +149,9 @@ export function formatBackendTrackToSong(
     artistName: track.artist || 'Unknown Artist',
     albumId: albumId || track.album || '',
     albumName: track.album || 'Single',
-    artwork: track.hasArtwork ? `${getApiBaseUrl()}/api/v1/tracks/${track.id}/artwork` : null,
+    artwork: (track.hasArtwork || (track as any).driveArtworkFileId || (track as any).driveArtworkId)
+      ? `${getApiBaseUrl()}/api/v1/tracks/${track.id}/artwork`
+      : null,
     duration,
     format,
     bitDepth: track.bitDepth ?? (format === 'FLAC' ? 24 : 16),
@@ -165,42 +189,93 @@ class ApiClient {
     } = {}
   ): Promise<ApiResponse<T>> {
     const { method = 'GET', body, requiresAuth = false, timeoutMs = 12000 } = options;
-    const baseUrl = getApiBaseUrl();
-    const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    let baseUrl = getApiBaseUrl();
 
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
+    // Helper to perform a single fetch attempt
+    const performFetch = async (targetBase: string) => {
+      const targetUrl = `${targetBase}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+      const headers: Record<string, string> = {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      };
+
+      if (requiresAuth) {
+        const token = await tokenStorage.getAccessToken();
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(targetUrl, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        return { response, targetUrl, headers };
+      } catch (err: any) {
+        clearTimeout(timer);
+        throw err;
+      }
     };
 
-    if (requiresAuth) {
-      const token = await tokenStorage.getAccessToken();
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+    let fetchResult: { response: Response; targetUrl: string; headers: Record<string, string> };
+
+    try {
+      fetchResult = await performFetch(baseUrl);
+    } catch (primaryErr: any) {
+      const errMsg = primaryErr?.message || '';
+      const isConnError =
+        errMsg.includes('ConnectException') ||
+        errMsg.includes('Failed to connect') ||
+        errMsg.includes('Network request failed') ||
+        primaryErr.name === 'AbortError';
+
+      // Auto-fallback between USB (127.0.0.1) and Wi-Fi (192.168.1.17) on physical Android
+      if (Platform.OS === 'android' && Device.isDevice && isConnError && !customBaseUrl) {
+        const fallbackBase = baseUrl === USB_BASE_URL ? LAN_BASE_URL : USB_BASE_URL;
+        try {
+          fetchResult = await performFetch(fallbackBase);
+          // Fallback succeeded! Remember and update activeBaseUrl
+          activeBaseUrl = fallbackBase;
+          try {
+            storage.setItem('dhun_active_api_base_url', fallbackBase);
+          } catch {}
+          baseUrl = fallbackBase;
+        } catch {
+          // If fallback also failed, re-throw primary error
+          if (primaryErr.name === 'AbortError') {
+            throw new ApiError('Network request timed out. Please check your connection.', 408, 'TIMEOUT');
+          }
+          throw new ApiError(primaryErr.message || 'Unable to connect to Dhun server.', 503, 'NETWORK_ERROR');
+        }
+      } else {
+        if (primaryErr.name === 'AbortError') {
+          throw new ApiError('Network request timed out. Please check your connection.', 408, 'TIMEOUT');
+        }
+        if (primaryErr instanceof ApiError) {
+          throw primaryErr;
+        }
+        throw new ApiError(primaryErr.message || 'Unable to connect to Dhun server.', 503, 'NETWORK_ERROR');
       }
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const { response, targetUrl, headers } = fetchResult;
 
     try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timer);
-
       // Handle 401 Unauthorized by attempting token refresh once
       if (response.status === 401 && requiresAuth) {
         const newAccessToken = await this.refreshTokenOnce();
         if (newAccessToken) {
           // Retry original request with newly refreshed token
           headers.Authorization = `Bearer ${newAccessToken}`;
-          const retryResponse = await fetch(url, {
+          const retryResponse = await fetch(targetUrl, {
             method,
             headers,
             body: body ? JSON.stringify(body) : undefined,
@@ -258,14 +333,10 @@ class ApiClient {
 
       return json;
     } catch (err: any) {
-      clearTimeout(timer);
-      if (err.name === 'AbortError') {
-        throw new ApiError('Network request timed out. Please check your connection.', 408, 'TIMEOUT');
-      }
       if (err instanceof ApiError) {
         throw err;
       }
-      throw new ApiError(err.message || 'Unable to connect to Dhun server.', 503, 'NETWORK_ERROR');
+      throw new ApiError(err.message || 'Unable to process server response.', 500, 'PARSER_ERROR');
     }
   }
 
@@ -342,6 +413,20 @@ class ApiClient {
           avatarUrl: data?.avatarUrl,
         },
       }
+    );
+  }
+
+  async forgotPassword(email: string) {
+    return this.request<{ message: string; resetToken?: string }>(
+      '/api/v1/auth/forgot-password',
+      { method: 'POST', body: { email: email.toLowerCase().trim() } }
+    );
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    return this.request<{ message: string }>(
+      '/api/v1/auth/reset-password',
+      { method: 'POST', body: { token: token.trim(), newPassword: newPassword.trim() } }
     );
   }
 

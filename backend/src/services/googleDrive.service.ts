@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import type { drive_v3 } from 'googleapis';
 import { getGoogleDriveClient } from '../config/googleAuth.js';
+import { env } from '../config/env.js';
 
 export interface DriveFolderInfo {
   id: string;
@@ -240,6 +241,156 @@ export class GoogleDriveService {
   }
 
   /**
+   * Uploads a Readable stream directly to Google Drive without saving to local disk.
+   * Performs deduplication by name/size/MD5 in the parent folder, and verifies parent ID post-upload.
+   */
+  async uploadStream(options: {
+    stream: Readable;
+    fileName: string;
+    mimeType: string;
+    parentFolderId: string;
+    expectedSize?: number;
+    expectedMd5?: string;
+  }): Promise<DriveFileInfo> {
+    if (!options.parentFolderId) {
+      throw new Error(`[Google Drive Error] Cannot upload stream "${options.fileName}" without explicit parentFolderId.`);
+    }
+
+    const drive = await this.getClient();
+
+    // Check if file already exists in target folder
+    const existing = await drive.files.list({
+      q: `'${options.parentFolderId}' in parents and name = '${options.fileName.replace(/'/g, "\\'")}' and trashed = false`,
+      fields: 'files(id, name, mimeType, size, md5Checksum, parents)',
+      spaces: 'drive',
+    });
+
+    if (existing.data.files && existing.data.files.length > 0) {
+      const file = existing.data.files[0];
+      const remoteSize = file.size ? Number.parseInt(file.size, 10) : undefined;
+      const remoteMd5 = file.md5Checksum ? file.md5Checksum.toLowerCase() : undefined;
+
+      if (options.expectedSize !== undefined && options.expectedMd5 !== undefined) {
+        const sizeMatches = remoteSize !== undefined && remoteSize === options.expectedSize;
+        const md5Matches = remoteMd5 !== undefined && remoteMd5 === options.expectedMd5.toLowerCase();
+        if (sizeMatches && md5Matches) {
+          return {
+            id: file.id as string,
+            name: file.name as string,
+            mimeType: file.mimeType,
+            size: file.size,
+            md5Checksum: file.md5Checksum,
+            parents: file.parents,
+          };
+        }
+        throw new Error(
+          `[Existing File Conflict] A file named "${options.fileName}" already exists in Drive folder ${options.parentFolderId}, but integrity check does not match.\n` +
+          `Expected size: ${options.expectedSize}, Drive size: ${file.size}\n` +
+          `Expected MD5: ${options.expectedMd5}, Drive MD5: ${file.md5Checksum}`
+        );
+      }
+
+      // Return existing file to avoid duplicate creation
+      return {
+        id: file.id as string,
+        name: file.name as string,
+        mimeType: file.mimeType,
+        size: file.size,
+        md5Checksum: file.md5Checksum,
+        parents: file.parents,
+      };
+    }
+
+    const media = {
+      mimeType: options.mimeType,
+      body: options.stream,
+    };
+
+    const response = await drive.files.create({
+      requestBody: {
+        name: options.fileName,
+        parents: [options.parentFolderId],
+      },
+      media,
+      fields: 'id, name, mimeType, size, md5Checksum, parents',
+    });
+
+    const uploadedId = response.data.id as string;
+    const verified = await this.verifyFile(uploadedId);
+
+    if (options.expectedSize !== undefined && verified.size && Number.parseInt(verified.size, 10) !== options.expectedSize) {
+      throw new Error(
+        `[Integrity Verification Error] Uploaded stream "${options.fileName}" size mismatch.\n` +
+        `Expected size: ${options.expectedSize}, Drive size: ${verified.size}`
+      );
+    }
+
+    if (options.expectedMd5 && verified.md5Checksum && verified.md5Checksum.toLowerCase() !== options.expectedMd5.toLowerCase()) {
+      throw new Error(
+        `[Integrity Verification Error] Uploaded stream "${options.fileName}" MD5 checksum mismatch.\n` +
+        `Expected MD5: ${options.expectedMd5}, Drive MD5: ${verified.md5Checksum}`
+      );
+    }
+
+    if (!verified.parents || !verified.parents.includes(options.parentFolderId)) {
+      throw new Error(
+        `[Parent Verification Error] Uploaded stream "${options.fileName}" parent [${verified.parents?.join(', ')}] does not match required parentFolderId "${options.parentFolderId}".`
+      );
+    }
+
+    return verified;
+  }
+
+  /**
+   * Uploads an in-memory Buffer directly to Google Drive without saving to local disk.
+   */
+  async uploadBuffer(options: {
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    parentFolderId: string;
+  }): Promise<DriveFileInfo> {
+    const md5Hash = crypto.createHash('md5').update(options.buffer).digest('hex');
+    const stream = Readable.from(options.buffer);
+    return this.uploadStream({
+      stream,
+      fileName: options.fileName,
+      mimeType: options.mimeType,
+      parentFolderId: options.parentFolderId,
+      expectedSize: options.buffer.length,
+      expectedMd5: md5Hash,
+    });
+  }
+
+  /**
+   * Streams a file directly from a remote HTTP URL into Google Drive without touching local disk.
+   */
+  async uploadFromUrl(options: {
+    url: string;
+    fileName: string;
+    mimeType: string;
+    parentFolderId: string;
+    headers?: Record<string, string>;
+  }): Promise<DriveFileInfo> {
+    const res = await fetch(options.url, {
+      headers: options.headers || { 'User-Agent': 'Dhun-Music-Platform/1.0' },
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!res.ok || !res.body) {
+      throw new Error(`Failed to fetch from URL ${options.url}: HTTP ${res.status} ${res.statusText}`);
+    }
+
+    const nodeStream = Readable.fromWeb(res.body as any);
+    return this.uploadStream({
+      stream: nodeStream,
+      fileName: options.fileName,
+      mimeType: options.mimeType,
+      parentFolderId: options.parentFolderId,
+    });
+  }
+
+  /**
    * Uploads an in-memory JSON object as a file (e.g. metadata.json).
    * Checks if already exists to prevent duplicate creation.
    */
@@ -381,6 +532,157 @@ export class GoogleDriveService {
   }
 
   /**
+   * Retrieves the canonical library root folder.
+   * If rootFolderId is configured or provided, verifies it exists and is active.
+   * Otherwise falls back to finding or creating by name.
+   */
+  async getLibraryRootFolder(rootFolderId?: string, rootFolderName?: string): Promise<DriveFolderInfo> {
+    const targetId = rootFolderId || env.driveRootFolderId;
+    if (targetId) {
+      try {
+        const verified = await this.verifyFolder(targetId);
+        return verified;
+      } catch (err: any) {
+        console.warn(`Could not verify configured root folder by ID (${targetId}): ${err.message}. Searching by name...`);
+      }
+    }
+    const targetName = rootFolderName || env.driveRootFolder;
+    return this.findOrCreateFolder(targetName);
+  }
+
+  /**
+   * Finds or creates a canonical artist folder directly under the library root.
+   * Guarantees that artist folders are created ONLY directly in rootFolderId.
+   * Uses case-insensitive deduplication to prevent duplicate artist folders.
+   */
+  async findOrCreateArtistFolder(artistName: string, rootFolderId: string): Promise<DriveFolderInfo> {
+    if (!rootFolderId) {
+      throw new Error(`[Google Drive Error] Cannot resolve artist folder "${artistName}" without explicit rootFolderId.`);
+    }
+
+    const cleanName = artistName.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Unknown Artist';
+    const drive = await this.getClient();
+
+    const query = `mimeType = 'application/vnd.google-apps.folder' and '${rootFolderId}' in parents and trashed = false`;
+    const res = await drive.files.list({
+      q: query,
+      fields: 'files(id, name, webViewLink, trashed, parents)',
+      pageSize: 1000,
+      spaces: 'drive',
+    });
+
+    const existing = res.data.files?.find(
+      (f) => f.name && f.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+
+    if (existing) {
+      return {
+        id: existing.id as string,
+        name: existing.name as string,
+        webViewLink: existing.webViewLink,
+        trashed: existing.trashed,
+      };
+    }
+
+    return this.createFolder(cleanName, rootFolderId);
+  }
+
+  /**
+   * Finds or creates a canonical song folder directly inside the artist folder.
+   * Name is strictly the song title (e.g. "Tum Hi Ho", NOT "Tum Hi Ho - Arijit Singh").
+   * Supports discovering and migrating legacy naming conventions idempotently.
+   */
+  async findOrCreateSongFolder(
+    songTitle: string,
+    artistFolderId: string,
+    options: { legacySearchParentId?: string; artistName?: string } = {}
+  ): Promise<DriveFolderInfo> {
+    if (!artistFolderId) {
+      throw new Error(`[Google Drive Error] Cannot resolve song folder "${songTitle}" without explicit artistFolderId.`);
+    }
+
+    const cleanTitle = songTitle.replace(/[/\\?%*:|"<>]/g, '_').trim();
+    const drive = await this.getClient();
+
+    // 1. Check if canonical song folder already exists directly inside artistFolderId
+    const res = await drive.files.list({
+      q: `mimeType = 'application/vnd.google-apps.folder' and '${artistFolderId}' in parents and trashed = false`,
+      fields: 'files(id, name, webViewLink, trashed, parents)',
+      pageSize: 500,
+      spaces: 'drive',
+    });
+
+    const exactMatch = res.data.files?.find(
+      (f) => f.name && f.name.trim().toLowerCase() === cleanTitle.toLowerCase()
+    );
+    if (exactMatch) {
+      return {
+        id: exactMatch.id as string,
+        name: exactMatch.name as string,
+        webViewLink: exactMatch.webViewLink,
+        trashed: exactMatch.trashed,
+      };
+    }
+
+    // 2. Check for legacy folder inside artist folder: "<Title> - <Artist>" or "<Artist> - <Title>"
+    if (options.artistName) {
+      const cleanArtist = options.artistName.replace(/[/\\?%*:|"<>]/g, '_').trim();
+      const legacyPattern1 = `${cleanTitle} - ${cleanArtist}`.toLowerCase();
+      const legacyPattern2 = `${cleanArtist} - ${cleanTitle}`.toLowerCase();
+
+      const legacyInArtist = res.data.files?.find((f) => {
+        const n = f.name?.trim().toLowerCase();
+        return n === legacyPattern1 || n === legacyPattern2;
+      });
+
+      if (legacyInArtist) {
+        console.log(`  Updating legacy folder "${legacyInArtist.name}" to canonical song name "${cleanTitle}"...`);
+        await this.renameItem(legacyInArtist.id as string, cleanTitle);
+        return {
+          id: legacyInArtist.id as string,
+          name: cleanTitle,
+          webViewLink: legacyInArtist.webViewLink,
+          trashed: legacyInArtist.trashed,
+        };
+      }
+    }
+
+    // 3. Check legacy location (directly in library root) if legacySearchParentId is provided
+    if (options.legacySearchParentId && options.artistName) {
+      const cleanArtist = options.artistName.replace(/[/\\?%*:|"<>]/g, '_').trim();
+      const legacyPattern1 = `${cleanTitle} - ${cleanArtist}`.toLowerCase();
+      const legacyPattern2 = `${cleanArtist} - ${cleanTitle}`.toLowerCase();
+
+      const rootRes = await drive.files.list({
+        q: `mimeType = 'application/vnd.google-apps.folder' and '${options.legacySearchParentId}' in parents and trashed = false`,
+        fields: 'files(id, name, webViewLink, trashed, parents)',
+        pageSize: 500,
+        spaces: 'drive',
+      });
+
+      const legacyInRoot = rootRes.data.files?.find((f) => {
+        const n = f.name?.trim().toLowerCase();
+        return n === legacyPattern1 || n === legacyPattern2;
+      });
+
+      if (legacyInRoot) {
+        console.log(`  Moving legacy folder "${legacyInRoot.name}" into artist folder and renaming to "${cleanTitle}"...`);
+        await this.moveItem(legacyInRoot.id as string, artistFolderId, options.legacySearchParentId);
+        await this.renameItem(legacyInRoot.id as string, cleanTitle);
+        return {
+          id: legacyInRoot.id as string,
+          name: cleanTitle,
+          webViewLink: legacyInRoot.webViewLink,
+          trashed: legacyInRoot.trashed,
+        };
+      }
+    }
+
+    // 4. Create new canonical song folder under artistFolderId
+    return this.createFolder(cleanTitle, artistFolderId);
+  }
+
+  /**
    * Creates a folder with an explicit parent folder ID.
    */
   async createFolder(folderName: string, parentFolderId: string): Promise<DriveFolderInfo> {
@@ -396,6 +698,13 @@ export class GoogleDriveService {
       },
       fields: 'id, name, webViewLink, trashed, parents',
     });
+
+    if (!res.data.parents || !res.data.parents.includes(parentFolderId)) {
+      throw new Error(
+        `[Parent Verification Error] Created folder "${folderName}" parents [${res.data.parents?.join(', ')}] do not match required parentFolderId "${parentFolderId}".`
+      );
+    }
+
     return {
       id: res.data.id as string,
       name: res.data.name as string,
@@ -427,6 +736,9 @@ export class GoogleDriveService {
    * Moves a file or folder into a new parent folder.
    */
   async moveItem(fileId: string, newParentId: string, oldParentId?: string): Promise<DriveFileInfo> {
+    if (!newParentId) {
+      throw new Error(`[Google Drive Error] Cannot move item "${fileId}" without explicit newParentId.`);
+    }
     const drive = await this.getClient();
     let prevParents = oldParentId;
     if (!prevParents) {
@@ -439,6 +751,13 @@ export class GoogleDriveService {
       removeParents: prevParents,
       fields: 'id, name, mimeType, size, parents',
     });
+
+    if (!res.data.parents || !res.data.parents.includes(newParentId)) {
+      throw new Error(
+        `[Parent Verification Error] Moved item "${fileId}" parents [${res.data.parents?.join(', ')}] do not include required newParentId "${newParentId}".`
+      );
+    }
+
     return {
       id: res.data.id as string,
       name: res.data.name as string,

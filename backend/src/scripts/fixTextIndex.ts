@@ -13,8 +13,10 @@ async function fix() {
     if (idx.name?.includes('text') || idx.weights) {
       console.log('Dropping index:', idx.name);
       try {
-        await Track.collection.dropIndex(idx.name);
-        console.log('Dropped:', idx.name);
+        if (idx.name) {
+          await Track.collection.dropIndex(idx.name);
+          console.log('Dropped:', idx.name);
+        }
       } catch (e: any) {
         console.warn('Error dropping:', e.message);
       }

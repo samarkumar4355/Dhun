@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Platform, Dimensions, Image } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -21,7 +21,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export function MiniPlayer() {
   const { colors, glass, isDark } = useTheme();
-  const { currentSong, isPlaying, progress, pause, resume } = usePlayer();
+  const { currentSong, isPlaying, progress, pause, resume, next } = usePlayer();
   const router = useRouter();
 
   // Travelling active playback light sheen
@@ -60,14 +60,6 @@ export function MiniPlayer() {
         Platform.OS === 'web' ? (webGlassStyle as any) : null,
       ]}
     >
-      {/* Invisible navigation overlay — sits behind content so no nested <button> on web */}
-      <Pressable
-        onPress={() => router.push('/player')}
-        style={StyleSheet.absoluteFill}
-        accessibilityLabel={`Now playing: ${currentSong.title} by ${currentSong.artistName}`}
-        accessibilityRole="link"
-      />
-
       {/* Travelling active playback light sheen along the top edge */}
       {isPlaying && (
         <Animated.View
@@ -88,7 +80,7 @@ export function MiniPlayer() {
         </Animated.View>
       )}
 
-      {/* Progress bar — non-interactive, passes touches through */}
+      {/* Progress bar — non-interactive */}
       <View style={[styles.progressTrack, { backgroundColor: colors.progressTrack }]} pointerEvents="none">
         <View
           style={[
@@ -98,35 +90,58 @@ export function MiniPlayer() {
         />
       </View>
 
-      <View style={styles.content} pointerEvents="box-none">
-        {/* Artwork placeholder — non-interactive */}
-        <View
-          style={[
-            styles.artwork,
-            { backgroundColor: stringToColor(currentSong.title), borderRadius: radius.sm },
-          ]}
-          pointerEvents="none"
+      <View style={styles.content}>
+        {/* Track details Pressable to open full screen player */}
+        <Pressable
+          style={styles.trackDetailsPressable}
+          onPress={() => router.push('/player')}
+          accessibilityLabel={`Open player: ${currentSong.title} by ${currentSong.artistName}`}
+          accessibilityRole="button"
         >
-          <Text style={styles.artworkText}>{getInitials(currentSong.title)}</Text>
-        </View>
-
-        {/* Song info — non-interactive */}
-        <View style={styles.info} pointerEvents="none">
-          <Text
-            style={[typography.label, { color: colors.textPrimary }]}
-            numberOfLines={1}
+          {/* Artwork thumbnail */}
+          <View
+            style={[
+              styles.artwork,
+              {
+                backgroundColor: 'rgba(32, 22, 46, 0.85)',
+                borderRadius: radius.sm,
+                borderColor: 'rgba(229, 184, 66, 0.35)',
+                borderWidth: 1,
+                overflow: 'hidden',
+              },
+            ]}
           >
-            {currentSong.title}
-          </Text>
-          <Text
-            style={[typography.caption, { color: colors.textSecondary }]}
-            numberOfLines={1}
-          >
-            {currentSong.artistName}
-          </Text>
-        </View>
+            {currentSong.artwork ? (
+              <Image
+                source={{ uri: currentSong.artwork }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={[styles.artworkText, { color: colors.accentWarm || '#FFD700' }]}>
+                {getInitials(currentSong.title)}
+              </Text>
+            )}
+          </View>
 
-        {/* Play/Pause — interactive, intercepts touches above nav overlay */}
+          {/* Song info */}
+          <View style={styles.info}>
+            <Text
+              style={[typography.label, { color: colors.textPrimary }]}
+              numberOfLines={1}
+            >
+              {currentSong.title}
+            </Text>
+            <Text
+              style={[typography.caption, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {currentSong.artistName}
+            </Text>
+          </View>
+        </Pressable>
+
+        {/* Play/Pause */}
         <Pressable
           onPress={() => {
             isPlaying ? pause() : resume();
@@ -145,7 +160,7 @@ export function MiniPlayer() {
 
         {/* Next */}
         <Pressable
-          onPress={() => {}}
+          onPress={() => next()}
           hitSlop={12}
           accessibilityLabel="Next track"
           accessibilityRole="button"
@@ -183,6 +198,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  trackDetailsPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   artwork: {
     width: 42,

@@ -22,6 +22,7 @@ import { spacing, radius } from '@/theme/spacing';
 import { DhunWordmark } from '@/components/DhunWordmark';
 import { GoogleIcon } from '@/components/GoogleIcon';
 import { GlassSurface } from '@/components/GlassSurface';
+import { GoogleAccountPickerModal, GoogleAccount } from '@/components/GoogleAccountPickerModal';
 
 export default function SignUpScreen() {
   const { colors, isDark, glass } = useTheme();
@@ -34,6 +35,7 @@ export default function SignUpScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
 
   // Generated password reveal modal state
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
@@ -58,11 +60,17 @@ export default function SignUpScreen() {
     }
   };
 
-  const handleGoogleSignUp = async () => {
+  const handleGoogleSignUp = () => {
+    setErrorMessage(null);
+    setShowGooglePicker(true);
+  };
+
+  const handleSelectGoogleAccount = async (account: GoogleAccount) => {
+    setShowGooglePicker(false);
     setErrorMessage(null);
     try {
       setGoogleLoading(true);
-      await signupWithGoogle(email, name);
+      await signupWithGoogle(account.email, account.displayName);
       router.replace('/(tabs)/listen');
     } catch (err: any) {
       setErrorMessage(err.message || 'Google sign-up failed. Please ensure the backend is connected.');
@@ -366,6 +374,14 @@ export default function SignUpScreen() {
           </GlassSurface>
         </View>
       </Modal>
+
+      {/* Google Account Picker Modal */}
+      <GoogleAccountPickerModal
+        visible={showGooglePicker}
+        loading={googleLoading}
+        onClose={() => setShowGooglePicker(false)}
+        onSelectAccount={handleSelectGoogleAccount}
+      />
     </View>
   );
 }

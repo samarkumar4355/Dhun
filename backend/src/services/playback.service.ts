@@ -244,6 +244,49 @@ export class PlaybackService {
       }
     }
   }
+
+  /**
+   * Streams track artwork image from Google Drive or local storage.
+   */
+  async streamArtwork(trackId: string, req: Request, res: Response): Promise<void> {
+    try {
+      const track = await this.findTrackSafely(trackId);
+      if (!track) {
+        sendError(res, 'Track not found', 404, 'TRACK_NOT_FOUND');
+        return;
+      }
+
+      if (track.driveArtworkFileId) {
+        try {
+          const drive = await googleDriveService.getClient();
+          const driveRes = await drive.files.get(
+            { fileId: track.driveArtworkFileId, alt: 'media' },
+            { responseType: 'stream' }
+          );
+
+          res.setHeader('Content-Type', driveRes.headers['content-type'] || 'image/jpeg');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          driveRes.data.on('error', (err: any) => {
+            logger.error(`Error in Drive artwork stream for track ${trackId}:`, err);
+            if (!res.headersSent) {
+              sendError(res, 'Stream error for artwork', 502, 'STREAM_ERROR');
+            }
+          });
+          driveRes.data.pipe(res);
+          return;
+        } catch (err: any) {
+          logger.error(`Failed to stream artwork from Drive for track ${trackId}:`, err);
+        }
+      }
+
+      sendError(res, 'Artwork not found', 404, 'ARTWORK_NOT_FOUND');
+    } catch (err: any) {
+      logger.error(`Error in streamArtwork for track ${trackId}:`, err);
+      if (!res.headersSent) {
+        sendError(res, err.message || 'Artwork retrieval failed', 500, 'ARTWORK_ERROR');
+      }
+    }
+  }
 }
 
 export const playbackService = new PlaybackService();

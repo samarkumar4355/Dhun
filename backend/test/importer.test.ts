@@ -67,17 +67,21 @@ describe('Dhun Importer Safeguards & Test Suite', () => {
     });
 
     it('should compute distinct MD5 and SHA-256 hashes without conflating them', async () => {
-      const tempFile = path.join(env.localImportFolder, `test_hash_${Date.now()}.tmp`);
+      const tempFile = path.join(os.tmpdir(), `test_hash_${Date.now()}.tmp`);
       fs.writeFileSync(tempFile, 'Dhun lossless audio test bytes');
 
-      const md5 = computeLocalMd5(tempFile);
-      const sha256 = await metadataService.computeFileHash(tempFile);
+      try {
+        const md5 = computeLocalMd5(tempFile);
+        const sha256 = await metadataService.computeFileHash(tempFile);
 
-      fs.unlinkSync(tempFile);
-
-      assert.strictEqual(md5.length, 32); // MD5 is 128-bit (32 hex characters)
-      assert.strictEqual(sha256.length, 64); // SHA-256 is 256-bit (64 hex characters)
-      assert.notStrictEqual(md5, sha256);
+        assert.strictEqual(md5.length, 32); // MD5 is 128-bit (32 hex characters)
+        assert.strictEqual(sha256.length, 64); // SHA-256 is 256-bit (64 hex characters)
+        assert.notStrictEqual(md5, sha256);
+      } finally {
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+      }
     });
   });
 
@@ -176,7 +180,7 @@ describe('Dhun Importer Safeguards & Test Suite', () => {
     });
 
     it('should fail safely and reject reuse when an existing file has the same size but no MD5 checksum', async () => {
-      const tempTestFile = path.join(env.localImportFolder, `test_conflict_${Date.now()}.tmp`);
+      const tempTestFile = path.join(os.tmpdir(), `test_conflict_${Date.now()}.tmp`);
       fs.writeFileSync(tempTestFile, 'hello world content');
       const localSize = fs.statSync(tempTestFile).size;
 
@@ -200,26 +204,30 @@ describe('Dhun Importer Safeguards & Test Suite', () => {
         },
       });
 
-      await assert.rejects(
-        async () => {
-          await service.uploadFile({
-            filePath: tempTestFile,
-            fileName: 'test.tmp',
-            mimeType: 'text/plain',
-            parentFolderId: 'fake_parent_folder_id',
-          });
-        },
-        (err: any) => {
-          assert.ok(err.message.includes('[Existing File Conflict]'));
-          return true;
+      try {
+        await assert.rejects(
+          async () => {
+            await service.uploadFile({
+              filePath: tempTestFile,
+              fileName: 'test.tmp',
+              mimeType: 'text/plain',
+              parentFolderId: 'fake_parent_folder_id',
+            });
+          },
+          (err: any) => {
+            assert.ok(err.message.includes('[Existing File Conflict]'));
+            return true;
+          }
+        );
+      } finally {
+        if (fs.existsSync(tempTestFile)) {
+          fs.unlinkSync(tempTestFile);
         }
-      );
-
-      fs.unlinkSync(tempTestFile);
+      }
     });
 
     it('should reuse existing Drive file when both size and MD5 match case-insensitively', async () => {
-      const tempTestFile = path.join(env.localImportFolder, `test_match_${Date.now()}.tmp`);
+      const tempTestFile = path.join(os.tmpdir(), `test_match_${Date.now()}.tmp`);
       fs.writeFileSync(tempTestFile, 'matching content bytes');
       const localSize = fs.statSync(tempTestFile).size;
       const localMd5 = computeLocalMd5(tempTestFile);
@@ -243,15 +251,20 @@ describe('Dhun Importer Safeguards & Test Suite', () => {
         },
       });
 
-      const result = await service.uploadFile({
-        filePath: tempTestFile,
-        fileName: 'test.tmp',
-        mimeType: 'text/plain',
-        parentFolderId: 'fake_parent_folder_id',
-      });
+      try {
+        const result = await service.uploadFile({
+          filePath: tempTestFile,
+          fileName: 'test.tmp',
+          mimeType: 'text/plain',
+          parentFolderId: 'fake_parent_folder_id',
+        });
 
-      assert.strictEqual(result.id, 'matched_file_id_789');
-      fs.unlinkSync(tempTestFile);
+        assert.strictEqual(result.id, 'matched_file_id_789');
+      } finally {
+        if (fs.existsSync(tempTestFile)) {
+          fs.unlinkSync(tempTestFile);
+        }
+      }
     });
   });
 

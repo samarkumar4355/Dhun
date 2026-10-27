@@ -20,6 +20,9 @@ import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
 import { DhunWordmark } from '@/components/DhunWordmark';
 import { GoogleIcon } from '@/components/GoogleIcon';
+import { GoogleAccountPickerModal, GoogleAccount } from '@/components/GoogleAccountPickerModal';
+import { ResetPasswordModal } from '@/components/ResetPasswordModal';
+import { getApiBaseUrl, setApiBaseUrl, USB_BASE_URL, LAN_BASE_URL } from '@/services/api/apiClient';
 
 export default function LoginScreen() {
   const { colors, isDark, glass } = useTheme();
@@ -34,6 +37,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
 
   // Auto-fill recent email if available
   useEffect(() => {
@@ -66,11 +71,17 @@ export default function LoginScreen() {
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = () => {
+    setErrorMessage(null);
+    setShowGooglePicker(true);
+  };
+
+  const handleSelectGoogleAccount = async (account: GoogleAccount) => {
+    setShowGooglePicker(false);
     setErrorMessage(null);
     try {
       setGoogleLoading(true);
-      await loginWithGoogle(email);
+      await loginWithGoogle(account.email, account.displayName);
       router.replace('/(tabs)/listen');
     } catch (err: any) {
       setErrorMessage(err.message || 'Google sign-in failed. Please ensure the backend is connected.');
@@ -122,9 +133,31 @@ export default function LoginScreen() {
         {errorMessage ? (
           <View style={[styles.errorBanner, { backgroundColor: 'rgba(224, 97, 74, 0.15)', borderColor: colors.error }]}>
             <Ionicons name="alert-circle" size={18} color={colors.error} />
-            <Text style={[typography.bodySmall, { color: colors.error, marginLeft: spacing.sm, flex: 1 }]}>
-              {errorMessage}
-            </Text>
+            <View style={{ flex: 1, marginLeft: spacing.sm }}>
+              <Text style={[typography.bodySmall, { color: colors.error }]}>
+                {errorMessage}
+              </Text>
+              {(errorMessage.includes('Failed to connect') ||
+                errorMessage.includes('ConnectException') ||
+                errorMessage.includes('NETWORK_ERROR') ||
+                errorMessage.includes('Unable to connect')) && (
+                <Pressable
+                  onPress={() => {
+                    const current = getApiBaseUrl();
+                    const next = current.includes('127.0.0.1') ? LAN_BASE_URL : USB_BASE_URL;
+                    setApiBaseUrl(next);
+                    setErrorMessage(null);
+                  }}
+                  style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                >
+                  <Text style={[typography.caption, { color: colors.accent, fontWeight: '700', textDecorationLine: 'underline' }]}>
+                    {getApiBaseUrl().includes('127.0.0.1')
+                      ? '⚡ Switch to Wi-Fi Server (192.168.1.17)'
+                      : '⚡ Switch to USB Server (127.0.0.1)'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         ) : null}
 
@@ -223,9 +256,21 @@ export default function LoginScreen() {
                 />
               </Pressable>
             </View>
-            <Text style={[typography.caption, { color: colors.textMuted, marginTop: 4 }]}>
-              Use the password generated when you signed up.
-            </Text>
+            <View style={styles.passwordFooterRow}>
+              <Text style={[typography.caption, { color: colors.textMuted, flex: 1 }]}>
+                Use your generated password.
+              </Text>
+              <Pressable
+                onPress={() => setShowResetModal(true)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Reset Password"
+              >
+                <Text style={[typography.caption, { color: colors.accentWarm || '#FFD700', fontWeight: '700' }]}>
+                  Reset Password?
+                </Text>
+              </Pressable>
+            </View>
           </View>
 
           {/* Quick Demo Helper Card */}
@@ -293,11 +338,37 @@ export default function LoginScreen() {
           </Pressable>
         </View>
       </ScrollView>
+
+      {/* Google Account Picker Sheet */}
+      <GoogleAccountPickerModal
+        visible={showGooglePicker}
+        loading={googleLoading}
+        onClose={() => setShowGooglePicker(false)}
+        onSelectAccount={handleSelectGoogleAccount}
+      />
+
+      {/* Reset Password Modal */}
+      <ResetPasswordModal
+        visible={showResetModal}
+        initialEmail={email}
+        onClose={() => setShowResetModal(false)}
+        onSuccess={({ email: resetEmail, newPassword: resetPass }) => {
+          setEmail(resetEmail);
+          setPassword(resetPass);
+          setErrorMessage(null);
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  passwordFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
   screen: {
     flex: 1,
   },

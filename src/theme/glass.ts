@@ -30,23 +30,23 @@ export interface GlassThemeTokens {
 }
 
 export const darkGlassTokens: GlassThemeTokens = {
-  // Smoked charcoal glass
-  surface: 'rgba(27, 32, 29, 0.72)',
-  surfaceCard: 'rgba(27, 32, 29, 0.72)',
-  surfaceSubtle: 'rgba(34, 40, 37, 0.55)',
-  surfaceElevated: 'rgba(20, 24, 22, 0.88)',
-  // Fine, low-opacity borders
-  border: 'rgba(245, 241, 232, 0.08)',
-  // Soft highlight near the upper edge
-  borderHighlight: 'rgba(255, 255, 255, 0.14)',
-  borderAccent: 'rgba(215, 166, 90, 0.35)',
-  blurValue: 'blur(20px)',
+  // Royal obsidian-violet frosted glass
+  surface: 'rgba(23, 17, 32, 0.78)',
+  surfaceCard: 'rgba(28, 20, 38, 0.84)',
+  surfaceSubtle: 'rgba(38, 26, 52, 0.60)',
+  surfaceElevated: 'rgba(15, 11, 22, 0.94)',
+  // Luxury metallic gold border
+  border: 'rgba(229, 184, 66, 0.25)',
+  // Soft champagne gold highlight near the upper edge
+  borderHighlight: 'rgba(255, 244, 204, 0.40)',
+  borderAccent: 'rgba(255, 215, 0, 0.50)',
+  blurValue: 'blur(24px)',
   shadow: {
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.28,
-    shadowRadius: 14,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 6,
   },
 };
 

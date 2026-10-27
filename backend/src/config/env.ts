@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file
@@ -43,6 +44,7 @@ export const env = {
   ),
   oauthRedirectPort: Number.parseInt(process.env.OAUTH_REDIRECT_PORT || '3000', 10),
   driveRootFolder: process.env.GOOGLE_DRIVE_ROOT_FOLDER || 'Dhun Music Library',
+  driveRootFolderId: process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || '1NyaiCuxcNcwrWFHNIs_QdnD62Qa12PIM',
 
   // Authentication & Security
   jwtSecret: process.env.JWT_SECRET || 'dhun-jwt-secret-dev-key-never-use-in-production',
@@ -56,4 +58,7 @@ export const env = {
     process.cwd(),
     process.env.LOCAL_IMPORT_FOLDER || '../DhunMusicImport'
   ),
+
+  // Dedicated temporary directory outside the project for ephemeral staging/processing
+  tempStagingDir: process.env.DHUN_TEMP_STAGING_DIR || path.join(os.tmpdir(), 'dhun-staging'),
 };

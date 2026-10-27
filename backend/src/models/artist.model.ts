@@ -8,6 +8,7 @@ export interface IArtist extends Document {
   country?: string;
   genres: mongoose.Types.ObjectId[];
   externalLinks?: { platform: string; url: string }[];
+  driveFolderId?: string;
   provenance: string;
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +22,7 @@ const ArtistSchema: Schema = new Schema(
     artworkUrl: { type: String, trim: true },
     country: { type: String, trim: true },
     genres: [{ type: Schema.Types.ObjectId, ref: 'Genre' }],
+    driveFolderId: { type: String, trim: true },
     externalLinks: [
       {
         platform: { type: String, required: true, trim: true },

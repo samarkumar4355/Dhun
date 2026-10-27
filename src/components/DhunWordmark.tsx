@@ -1,9 +1,10 @@
-// ─── DHUN Wordmark Component ────────────────────────────────────────
+// ─── DHUN 3D Metallic Gold Wordmark / Logo Component ───────────────────
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Image, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeProvider';
-import Svg, { Line } from 'react-native-svg';
+
+const GOLD_LOGO = require('../../assets/images/dhun-gold-logo.jpg');
 
 interface DhunWordmarkProps {
   size?: 'small' | 'medium' | 'large';
@@ -11,38 +12,57 @@ interface DhunWordmarkProps {
   tagline?: string;
 }
 
-export function DhunWordmark({ 
-  size = 'large', 
+export function DhunWordmark({
+  size = 'large',
   showTagline = false,
-  tagline = 'Your Music, Untouched.',
+  tagline = 'Pure Sound. Offline.',
 }: DhunWordmarkProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
-  const fontSize = size === 'large' ? 48 : size === 'medium' ? 32 : 22;
-  const equalizerHeight = size === 'large' ? 40 : size === 'medium' ? 28 : 18;
-  const equalizerWidth = size === 'large' ? 36 : size === 'medium' ? 24 : 16;
+  const logoDimension = size === 'large' ? 240 : size === 'medium' ? 160 : 64;
+  const borderRadius = size === 'large' ? 28 : size === 'medium' ? 20 : 12;
 
   return (
     <View style={styles.container}>
-      {/* Equalizer / waveform icon */}
-      <View style={[styles.equalizerContainer, { height: equalizerHeight, width: equalizerWidth }]}>
-        <Svg width={equalizerWidth} height={equalizerHeight} viewBox="0 0 36 40">
-          <Line x1="4" y1="12" x2="4" y2="28" stroke={colors.accent} strokeWidth="2.5" strokeLinecap="round" />
-          <Line x1="11" y1="6" x2="11" y2="34" stroke={colors.accentWarm} strokeWidth="2.5" strokeLinecap="round" />
-          <Line x1="18" y1="2" x2="18" y2="38" stroke={colors.accent} strokeWidth="2.5" strokeLinecap="round" />
-          <Line x1="25" y1="8" x2="25" y2="32" stroke={colors.accentWarm} strokeWidth="2.5" strokeLinecap="round" />
-          <Line x1="32" y1="14" x2="32" y2="26" stroke={colors.accent} strokeWidth="2.5" strokeLinecap="round" />
-        </Svg>
+      {/* Ambient gold glow behind the 3D logo */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.glowHalo,
+          {
+            width: logoDimension + 30,
+            height: logoDimension + 30,
+            borderRadius: (logoDimension + 30) / 2,
+            backgroundColor: isDark
+              ? 'rgba(255, 215, 0, 0.18)'
+              : 'rgba(229, 184, 66, 0.14)',
+          },
+        ]}
+      />
+
+      {/* 3D Metallic Gold Dhun Logo */}
+      <View
+        style={[
+          styles.imageWrapper,
+          {
+            width: logoDimension,
+            height: logoDimension,
+            borderRadius,
+            borderColor: 'rgba(229, 184, 66, 0.35)',
+            borderWidth: size === 'small' ? 1 : 1.5,
+          },
+        ]}
+      >
+        <Image
+          source={GOLD_LOGO}
+          style={{ width: logoDimension, height: logoDimension, borderRadius }}
+          resizeMode="cover"
+        />
       </View>
 
-      {/* Wordmark */}
-      <Text style={[styles.wordmark, { fontSize, color: colors.textPrimary }]}>
-        dhun
-      </Text>
-
-      {/* Tagline */}
+      {/* Optional custom Tagline */}
       {showTagline && (
-        <Text style={[styles.tagline, { color: colors.textSecondary }]}>
+        <Text style={[styles.tagline, { color: colors.accentWarm || '#FFD700' }]}>
           {tagline}
         </Text>
       )}
@@ -53,19 +73,29 @@ export function DhunWordmark({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  equalizerContainer: {
-    marginBottom: 12,
+  glowHalo: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 0,
   },
-  wordmark: {
-    fontWeight: '300',
-    letterSpacing: 4,
+  imageWrapper: {
+    overflow: 'hidden',
+    backgroundColor: '#000000',
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+    zIndex: 1,
   },
   tagline: {
-    fontSize: 14,
-    fontWeight: '400',
-    marginTop: 8,
-    letterSpacing: 0.5,
-    fontStyle: 'italic',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 12,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
 });

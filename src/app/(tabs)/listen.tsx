@@ -24,6 +24,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { AlbumCard } from '@/components/AlbumCard';
 import { ArtistCard } from '@/components/ArtistCard';
 import { SongRow } from '@/components/SongRow';
+import { GenreSongCard } from '@/components/GenreSongCard';
 import { MoodCard } from '@/components/MoodCard';
 import { MiniPlayer } from '@/components/MiniPlayer';
 import { GlassSurface } from '@/components/GlassSurface';
@@ -170,6 +171,46 @@ export default function ListenScreen() {
 
     return list;
   }, [genres, recentTracks]);
+
+  // Curated genre categories for sliding carousels
+  const loveDoseTracks = useMemo(() => {
+    const keywords = ['pyar', 'dil', 'mohabbat', 'saathiya', 'wada', 'tum', 'chura', 'milan', 'ishq', 'romantic', 'romance', 'sajna', 'deewana', 'lullabye', 'cherubs'];
+    const matched = recentTracks.filter(t => {
+      const lower = `${t.title} ${t.albumName} ${t.artistName}`.toLowerCase();
+      return keywords.some(k => lower.includes(k));
+    });
+    return matched.length >= 4 ? matched : recentTracks.slice(0, 8);
+  }, [recentTracks]);
+
+  const mythologicalTracks = useMemo(() => {
+    const keywords = ['ram', 'shiva', 'bhajan', 'devotional', 'parbat', 'sawan', 'sitaron', 'jeena', 'zindagi', 'bhakti', 'spiritual', 'om'];
+    const matched = recentTracks.filter(t => {
+      const lower = `${t.title} ${t.albumName} ${t.artistName}`.toLowerCase();
+      return keywords.some(k => lower.includes(k));
+    });
+    return matched.length >= 4 ? matched : recentTracks.slice(4, 12);
+  }, [recentTracks]);
+
+  const motivationalTracks = useMemo(() => {
+    const keywords = ['dafli', 'zulfen', 'diwana', 'box', 'crazy', 'let', 'energy', 'rock', 'power', 'spirit'];
+    const matched = recentTracks.filter(t => {
+      const lower = `${t.title} ${t.albumName} ${t.artistName}`.toLowerCase();
+      return keywords.some(k => lower.includes(k));
+    });
+    return matched.length >= 4 ? matched : recentTracks.slice(8, 16);
+  }, [recentTracks]);
+
+  const trendingTracks = useMemo(() => {
+    return recentTracks.slice(0, 10);
+  }, [recentTracks]);
+
+  const evergreenTracks = useMemo(() => {
+    const matched = recentTracks.filter(t => {
+      const lower = t.artistName.toLowerCase();
+      return lower.includes('lata') || lower.includes('kishore') || lower.includes('rafi') || lower.includes('asha');
+    });
+    return matched.length >= 4 ? matched : recentTracks.slice(2, 10);
+  }, [recentTracks]);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -390,19 +431,134 @@ export default function ListenScreen() {
           style={{ overflow: 'visible' }}
         />
 
-        {/* Songs from Google Drive */}
-        {recentTracks.length > 0 && (
-          <>
-            <SectionHeader title="Google Drive Songs" onSeeAll={() => router.push('/(tabs)/library')} />
-            {recentTracks.map(song => (
-              <SongRow
-                key={song.id}
-                song={song}
-                onPress={() => play(song, recentTracks)}
-                isActive={currentSong?.id === song.id}
-              />
-            ))}
-          </>
+        {/* ─── 1. Trending Now Carousel ──────────────────────────── */}
+        {trendingTracks.length > 0 && (
+          <View style={styles.carouselSection}>
+            <SectionHeader
+              title="🔥 Trending Now"
+              onSeeAll={() => router.push('/(tabs)/library')}
+            />
+            <FlatList
+              data={trendingTracks}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              keyExtractor={item => `trending-${item.id}`}
+              renderItem={({ item }) => (
+                <GenreSongCard
+                  song={item}
+                  isActive={currentSong?.id === item.id}
+                  onPress={() => play(item, trendingTracks)}
+                />
+              )}
+              nestedScrollEnabled={true}
+              style={{ overflow: 'visible' }}
+            />
+          </View>
+        )}
+
+        {/* ─── 2. Love Dose & Romance Carousel ────────────────────── */}
+        {loveDoseTracks.length > 0 && (
+          <View style={styles.carouselSection}>
+            <SectionHeader
+              title="❤️ Love Dose"
+              onSeeAll={() => router.push('/(tabs)/library')}
+            />
+            <FlatList
+              data={loveDoseTracks}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              keyExtractor={item => `love-${item.id}`}
+              renderItem={({ item }) => (
+                <GenreSongCard
+                  song={item}
+                  isActive={currentSong?.id === item.id}
+                  onPress={() => play(item, loveDoseTracks)}
+                />
+              )}
+              nestedScrollEnabled={true}
+              style={{ overflow: 'visible' }}
+            />
+          </View>
+        )}
+
+        {/* ─── 3. Mythological & Soulful Devotion Carousel ────────── */}
+        {mythologicalTracks.length > 0 && (
+          <View style={styles.carouselSection}>
+            <SectionHeader
+              title="🕉️ Mythological & Soulful"
+              onSeeAll={() => router.push('/(tabs)/library')}
+            />
+            <FlatList
+              data={mythologicalTracks}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              keyExtractor={item => `mytho-${item.id}`}
+              renderItem={({ item }) => (
+                <GenreSongCard
+                  song={item}
+                  isActive={currentSong?.id === item.id}
+                  onPress={() => play(item, mythologicalTracks)}
+                />
+              )}
+              nestedScrollEnabled={true}
+              style={{ overflow: 'visible' }}
+            />
+          </View>
+        )}
+
+        {/* ─── 4. Motivational & Energy Carousel ──────────────────── */}
+        {motivationalTracks.length > 0 && (
+          <View style={styles.carouselSection}>
+            <SectionHeader
+              title="⚡ Motivational & Energy"
+              onSeeAll={() => router.push('/(tabs)/library')}
+            />
+            <FlatList
+              data={motivationalTracks}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              keyExtractor={item => `motiv-${item.id}`}
+              renderItem={({ item }) => (
+                <GenreSongCard
+                  song={item}
+                  isActive={currentSong?.id === item.id}
+                  onPress={() => play(item, motivationalTracks)}
+                />
+              )}
+              nestedScrollEnabled={true}
+              style={{ overflow: 'visible' }}
+            />
+          </View>
+        )}
+
+        {/* ─── 5. Golden Era Evergreens Carousel ──────────────────── */}
+        {evergreenTracks.length > 0 && (
+          <View style={styles.carouselSection}>
+            <SectionHeader
+              title="🌟 Golden Era Evergreens"
+              onSeeAll={() => router.push('/(tabs)/library')}
+            />
+            <FlatList
+              data={evergreenTracks}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+              keyExtractor={item => `evergreen-${item.id}`}
+              renderItem={({ item }) => (
+                <GenreSongCard
+                  song={item}
+                  isActive={currentSong?.id === item.id}
+                  onPress={() => play(item, evergreenTracks)}
+                />
+              )}
+              nestedScrollEnabled={true}
+              style={{ overflow: 'visible' }}
+            />
+          </View>
         )}
 
         {/* Mood & Genre Sessions */}
@@ -448,6 +604,45 @@ export default function ListenScreen() {
               <Text style={[typography.caption, { color: colors.textSecondary }]}>{filter}</Text>
             </GlassSurface>
           ))}
+        </View>
+
+        {/* ─── Loveful, Emotional + Funny Royal Footer Note ─────────── */}
+        <View style={styles.footerContainer}>
+          <GlassSurface
+            variant="card"
+            borderRadius={radius.xl}
+            showTopHighlight
+            showAmbientGlow
+            style={styles.footerCard}
+          >
+            <View style={styles.footerHeaderRow}>
+              <Ionicons name="sparkles" size={15} color={colors.accentWarm || '#FFD700'} />
+              <Text style={[styles.footerTag, { color: colors.accentWarm || '#FFD700' }]}>
+                DHUN DIL SE
+              </Text>
+              <Ionicons name="sparkles" size={15} color={colors.accentWarm || '#FFD700'} />
+            </View>
+
+            <Text style={[styles.footerTitle, { color: colors.textPrimary }]}>
+              Crafted with pure dil & a lot of chai ☕❤️
+            </Text>
+
+            <Text style={[styles.footerSubtitle, { color: colors.textSecondary }]}>
+              For sleepless midnight wanderers, broken hearts on repeat, and unapologetic late-night bathroom singers.
+            </Text>
+
+            <View style={[styles.footerQuoteBox, { borderColor: 'rgba(229, 184, 66, 0.28)' }]}>
+              <Text style={[styles.footerQuote, { color: colors.accentWarm || '#FFD700' }]}>
+                "Kyunki gaana sirf sunna nahi hota... chupchaap aankhein band karke mehsoos karna hota hai." 🎶
+              </Text>
+            </View>
+
+            <View style={styles.footerBrandRow}>
+              <Text style={[styles.footerVersion, { color: colors.textMuted }]}>
+                Dhun — Suno Dil Se • Pure Sound. Offline.
+              </Text>
+            </View>
+          </GlassSurface>
         </View>
       </ScrollView>
 
@@ -569,5 +764,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radius.md,
+  },
+  carouselSection: {
+    marginBottom: spacing.xs,
+  },
+  footerContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing['3xl'],
+  },
+  footerCard: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1.2,
+    borderColor: 'rgba(229, 184, 66, 0.30)',
+  },
+  footerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  footerTag: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  footerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginVertical: spacing.xs,
+    letterSpacing: 0.3,
+  },
+  footerSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  footerQuoteBox: {
+    backgroundColor: 'rgba(12, 9, 17, 0.65)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  footerQuote: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  footerBrandRow: {
+    marginTop: spacing.xs,
+  },
+  footerVersion: {
+    fontSize: 11,
+    letterSpacing: 0.8,
   },
 });

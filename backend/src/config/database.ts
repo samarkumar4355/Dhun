@@ -34,11 +34,20 @@ export async function connectDatabase(): Promise<void> {
   }
 
   try {
-    console.log('Connecting to MongoDB Atlas...');
-    await mongoose.connect(env.mongodbUri);
-    console.log('Connected to MongoDB Atlas successfully.');
+    console.log('Connecting to MongoDB...');
+    await mongoose.connect(env.mongodbUri, { serverSelectionTimeoutMS: 3000 });
+    console.log('Connected to MongoDB successfully.');
   } catch (error: any) {
-    console.error(`MongoDB Atlas connection error: ${error.message}`);
-    // Do not crash during initial setup; allow Google Drive testing to continue
+    console.warn(`Primary MongoDB connection error: ${error.message}`);
+    const localUri = 'mongodb://127.0.0.1:27017/dhun';
+    if (env.mongodbUri !== localUri) {
+      try {
+        console.log(`Attempting fallback to local MongoDB (${localUri})...`);
+        await mongoose.connect(localUri, { serverSelectionTimeoutMS: 2000 });
+        console.log('Connected to local MongoDB successfully.');
+      } catch (localErr: any) {
+        console.warn(`Local MongoDB fallback error: ${localErr.message}`);
+      }
+    }
   }
 }

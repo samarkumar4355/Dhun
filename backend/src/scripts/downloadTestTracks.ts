@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execSync } from 'node:child_process';
 
 interface TrackDownloadSpec {
@@ -91,7 +92,7 @@ const targetTracks: TrackDownloadSpec[] = [
 ];
 
 async function run() {
-  const audioDir = path.resolve(process.cwd(), '../DhunMusicImport/audio');
+  const audioDir = path.join(os.tmpdir(), 'dhun-test-audio');
   const importDir = path.resolve(process.cwd(), '../DhunMusicImport');
   const manifestPath = path.join(importDir, 'attribution-manifest.json');
 

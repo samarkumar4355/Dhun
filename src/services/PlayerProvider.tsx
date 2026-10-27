@@ -11,6 +11,7 @@ import React, {
   useEffect,
   useRef,
 } from 'react';
+import { Platform, PermissionsAndroid } from 'react-native';
 import {
   createAudioPlayer,
   setAudioModeAsync,
@@ -114,10 +115,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       try {
         await setAudioModeAsync({
           playsInSilentMode: true,
-          interruptionMode: 'duckOthers',
+          shouldPlayInBackground: true,
+          interruptionMode: 'doNotMix',
         });
-      } catch {
-        // Fallback for web / simulator
+      } catch (err) {
+        console.warn('Audio mode setup notice:', err);
+      }
+
+      // Request notification permission on Android 13+ for foreground media notification
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+        } catch {}
       }
 
       // Initialize offline engine
@@ -157,6 +168,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
       if (playerRef.current) {
         try {
+          playerRef.current.setActiveForLockScreen(false);
           playerRef.current.pause();
         } catch {}
         playerRef.current = null;
@@ -198,11 +210,52 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         const player = playerRef.current;
 
+        // Activate Lock Screen and Background Foreground Service
+        try {
+          player.setActiveForLockScreen(
+            true,
+            {
+              title: effectiveSong.title || 'Dhun Track',
+              artist: effectiveSong.artistName || 'Dhun',
+              albumTitle: effectiveSong.albumName || 'Dhun Collection',
+              artworkUrl: effectiveSong.artwork || undefined,
+            },
+            {
+              showNextTrack: true,
+              showPreviousTrack: true,
+              showSeekForward: true,
+              showSeekBackward: true,
+              seekForwardIntervalSeconds: 10,
+              seekBackwardIntervalSeconds: 10,
+            }
+          );
+        } catch (lockScreenErr) {
+          console.warn('Lockscreen activation notice:', lockScreenErr);
+        }
+
         statusSubRef.current = player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
           setIsPlaying(status.playing);
           setIsBuffering(status.isBuffering);
 
           if (status.error) {
+            // If streaming fails on USB (127.0.0.1), try Wi-Fi (192.168.1.17) and vice versa
+            if (audioUri && audioUri.includes('127.0.0.1:5001')) {
+              const alt = audioUri.replace('127.0.0.1:5001', '192.168.1.17:5001');
+              audioUri = alt;
+              try {
+                player.replace({ uri: alt });
+                player.play();
+                return;
+              } catch {}
+            } else if (audioUri && audioUri.includes('192.168.1.17:5001')) {
+              const alt = audioUri.replace('192.168.1.17:5001', '127.0.0.1:5001');
+              audioUri = alt;
+              try {
+                player.replace({ uri: alt });
+                player.play();
+                return;
+              } catch {}
+            }
             setPlaybackError(status.error);
             setIsPlaying(false);
           } else {

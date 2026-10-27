@@ -1,7 +1,7 @@
 // ─── Song Row ───────────────────────────────────────────────────────
 
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme/ThemeProvider';
 import { typography } from '@/theme/typography';
@@ -17,7 +17,8 @@ interface SongRowProps {
 }
 
 export function SongRow({ song, onPress, showArtwork = true, isActive = false }: SongRowProps) {
-  const { colors, glass, isDark } = useTheme();
+  const { colors, glass } = useTheme();
+  const [imgError, setImgError] = useState(false);
 
   return (
     <Pressable
@@ -50,14 +51,26 @@ export function SongRow({ song, onPress, showArtwork = true, isActive = false }:
           style={[
             styles.artwork,
             {
-              backgroundColor: stringToColor(song.title),
+              backgroundColor: 'rgba(34, 24, 48, 0.85)',
               borderRadius: radius.sm,
               borderColor: isActive ? colors.accent : glass.border,
-              borderWidth: isActive ? 1.5 : 0.5,
+              borderWidth: isActive ? 1.5 : 0.8,
+              overflow: 'hidden',
             },
           ]}
         >
-          <Text style={styles.artworkText}>{getInitials(song.title)}</Text>
+          {song.artwork && !imgError ? (
+            <Image
+              source={{ uri: song.artwork }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <Text style={[styles.artworkText, { color: colors.accentWarm || '#FFD700' }]}>
+              {getInitials(song.title)}
+            </Text>
+          )}
         </View>
       )}
 

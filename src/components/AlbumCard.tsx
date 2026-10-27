@@ -1,7 +1,5 @@
-// ─── Album Card ─────────────────────────────────────────────────────
-
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Image } from 'react-native';
 import { useTheme } from '@/theme/ThemeProvider';
 import { typography } from '@/theme/typography';
 import { spacing, radius } from '@/theme/spacing';
@@ -17,6 +15,7 @@ interface AlbumCardProps {
 
 export function AlbumCard({ title, artistName, artwork, onPress, size = 140 }: AlbumCardProps) {
   const { colors, glass } = useTheme();
+  const [imgError, setImgError] = useState(false);
 
   return (
     <Pressable
@@ -36,13 +35,25 @@ export function AlbumCard({ title, artistName, artwork, onPress, size = 140 }: A
           {
             width: size,
             height: size,
-            backgroundColor: stringToColor(title),
+            backgroundColor: 'rgba(32, 22, 46, 0.85)',
             borderRadius: radius.lg,
             borderColor: glass.borderHighlight,
-            borderWidth: 1,
+            borderWidth: 1.2,
           },
         ]}
       >
+        {artwork && !imgError ? (
+          <Image
+            source={{ uri: artwork }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <Text style={[styles.artworkText, { color: colors.accentWarm || '#FFD700' }]}>
+            {getInitials(title)}
+          </Text>
+        )}
         <View
           pointerEvents="none"
           style={[
@@ -50,7 +61,6 @@ export function AlbumCard({ title, artistName, artwork, onPress, size = 140 }: A
             { backgroundColor: glass.borderHighlight },
           ]}
         />
-        <Text style={styles.artworkText}>{getInitials(title)}</Text>
       </View>
       <Text
         style={[typography.label, { color: colors.textPrimary, marginTop: spacing.sm }]}

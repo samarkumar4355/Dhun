@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { Readable } from 'node:stream';
 import { env } from '../config/env.js';
 import { metadataService, type ExtractedTrackData } from '../services/metadata.service.js';
-import { googleDriveService } from '../services/googleDrive.service.js';
+import { googleDriveService, type DriveFolderInfo, type DriveFileInfo } from '../services/googleDrive.service.js';
 import { Track } from '../models/track.model.js';
 import { catalogService } from '../services/catalog.service.js';
 import mongoose from 'mongoose';
@@ -12,6 +14,7 @@ export interface ManifestEntry {
   fileName: string;
   title: string;
   artist: string;
+  driveArtistFolderId?: string;
   driveFolderId?: string;
   driveAudioFileId?: string;
   importedAt: string;
@@ -24,6 +27,7 @@ export interface ImportReportItem {
   status: 'imported' | 'skipped_duplicate' | 'dry_run_ready' | 'failed';
   codec: string;
   lossless: boolean;
+  driveArtistFolderId?: string;
   driveFolderId?: string;
   driveAudioFileId?: string;
   error?: string;
@@ -34,6 +38,8 @@ export interface ImportOptions {
   maxTracks?: number; // Default: 10
   confirmAccount?: boolean;
   expectedAccountEmail?: string;
+  sourceDir?: string;
+  cleanupLocalSourceAfterUpload?: boolean;
 }
 
 export class MusicImporter {
@@ -83,36 +89,52 @@ export class MusicImporter {
   }
 
   /**
-   * Generates the canonical song folder name: "<Song Title> - <Artist Name>"
+   * Generates the canonical song folder name: strictly the song title.
+   * Format: <Song Title> (e.g. "Tum Hi Ho", NOT "Tum Hi Ho - Arijit Singh")
    */
-  getSongFolderName(title: string, artist: string): string {
-    return this.sanitizeName(`${title} - ${artist}`);
+  getSongFolderName(title: string, artist?: string): string {
+    return this.sanitizeName(title);
   }
 
   /**
-   * Finds or creates a dedicated folder per song inside Dhun Music Library.
-   * Checks canonical name "<Title> - <Artist>" first, then legacy "<Artist> - <Title>".
-   * Reuses legacy folder and updates its name to canonical if found.
+   * Generates the canonical artist folder name directly under library root.
+   */
+  getArtistFolderName(artist: string): string {
+    const { primary } = catalogService.parseArtistNames(artist);
+    return this.sanitizeName(primary || artist);
+  }
+
+  /**
+   * Finds or creates dedicated canonical artist and song folders inside Dhun Music Library.
+   * Architecture: Dhun Music Library / <Primary Artist> / <Song Title> / assets
+   */
+  async findOrCreateArtistAndSongFolders(
+    title: string,
+    artist: string,
+    rootFolderId: string
+  ): Promise<{ artistFolder: DriveFolderInfo; songFolder: DriveFolderInfo }> {
+    const { primary } = catalogService.parseArtistNames(artist);
+    const canonicalArtist = primary || 'Unknown Artist';
+
+    // 1. Find or create canonical artist folder directly under rootFolderId
+    const artistFolder = await googleDriveService.findOrCreateArtistFolder(canonicalArtist, rootFolderId);
+
+    // 2. Find or create canonical song folder directly inside the artist folder
+    const songFolder = await googleDriveService.findOrCreateSongFolder(title, artistFolder.id, {
+      legacySearchParentId: rootFolderId,
+      artistName: canonicalArtist,
+    });
+
+    return { artistFolder, songFolder };
+  }
+
+  /**
+   * Finds or creates a dedicated folder per song inside the canonical artist folder.
+   * Backward-compatible alias returning the song folder.
    */
   async findOrCreateSongFolder(title: string, artist: string, rootFolderId: string): Promise<DriveFolderInfo> {
-    const canonicalName = this.getSongFolderName(title, artist);
-    const legacyName = this.sanitizeName(`${artist} - ${title}`);
-
-    // 1. Check if canonical folder exists inside Dhun Music Library
-    let folder = await googleDriveService.findFolderByName(canonicalName, rootFolderId);
-    if (folder) return folder;
-
-    // 2. Check if legacy folder exists and rename to canonical
-    folder = await googleDriveService.findFolderByName(legacyName, rootFolderId);
-    if (folder) {
-      console.log(`  Reusing existing folder "${legacyName}", updating to canonical name "${canonicalName}"...`);
-      await googleDriveService.renameItem(folder.id, canonicalName);
-      folder.name = canonicalName;
-      return folder;
-    }
-
-    // 3. Create fresh folder with canonical name under rootFolderId
-    return googleDriveService.createFolder(canonicalName, rootFolderId);
+    const { songFolder } = await this.findOrCreateArtistAndSongFolders(title, artist, rootFolderId);
+    return songFolder;
   }
 
   /**
@@ -145,7 +167,7 @@ export class MusicImporter {
   async runImport(options: ImportOptions = {}): Promise<ImportReportItem[]> {
     const dryRun = options.dryRun ?? false;
     const maxTracks = options.maxTracks ?? 10;
-    const audioDir = path.join(env.localImportFolder, 'audio');
+    const audioDir = options.sourceDir || path.join(env.localImportFolder, 'audio');
 
     console.log(`\n================================================================`);
     console.log(`🎵 Dhun Music Importer ${dryRun ? '[DRY RUN MODE]' : '[LIVE IMPORT MODE]'}`);
@@ -177,9 +199,7 @@ export class MusicImporter {
     }
 
     if (!fs.existsSync(audioDir)) {
-      fs.mkdirSync(audioDir, { recursive: true });
-      console.log(`Created audio staging folder at: ${audioDir}`);
-      console.log(`Please place your authorized music files (.flac, .m4a, .mp3, .wav) inside this folder.`);
+      console.log(`Source audio directory does not exist: ${audioDir}. Skipping local scan.`);
       return [];
     }
 
@@ -203,10 +223,10 @@ export class MusicImporter {
     let rootFolderId = '';
     if (!dryRun) {
       const rootFolder = await this.retryOperation(() =>
-        googleDriveService.findOrCreateFolder(env.driveRootFolder)
+        googleDriveService.getLibraryRootFolder(env.driveRootFolderId, env.driveRootFolder)
       );
       rootFolderId = rootFolder.id;
-      console.log(`Root Library Folder: "${env.driveRootFolder}" (ID: ${rootFolderId})\n`);
+      console.log(`Root Library Folder: "${rootFolder.name}" (ID: ${rootFolderId})\n`);
     }
 
     for (const fileName of audioFiles) {
@@ -248,6 +268,7 @@ export class MusicImporter {
                 originalFileName: data.originalFileName,
                 fileSizeBytes: data.fileSizeBytes,
                 mimeType: data.mimeType,
+                driveArtistFolderId: existing.driveArtistFolderId || '',
                 driveFolderId: existing.driveFolderId || '',
                 driveAudioFileId: existing.driveAudioFileId || '',
                 importedAt: existing.importedAt ? new Date(existing.importedAt) : new Date(),
@@ -293,6 +314,7 @@ export class MusicImporter {
             status: 'skipped_duplicate',
             codec: data.codec,
             lossless: data.lossless,
+            driveArtistFolderId: existing.driveArtistFolderId,
             driveAudioFileId: existing.driveAudioFileId,
             driveFolderId: existing.driveFolderId,
           });
@@ -313,10 +335,11 @@ export class MusicImporter {
           continue;
         }
 
-        // 4. Live import: Create or reuse dedicated track subfolder on Google Drive
-        const trackFolder = await this.retryOperation(() =>
-          this.findOrCreateSongFolder(data.title, data.artist, rootFolderId)
+        // 4. Live import: Create or reuse dedicated canonical artist & song folders on Google Drive
+        const { artistFolder, songFolder } = await this.retryOperation(() =>
+          this.findOrCreateArtistAndSongFolders(data.title, data.artist, rootFolderId)
         );
+        const trackFolder = songFolder;
 
         // 5. Upload original audio bytes (with existing-file check, explicit parentFolderId, and MD5 verification)
         console.log(`  Uploading/verifying audio file in Drive...`);
@@ -329,23 +352,19 @@ export class MusicImporter {
           })
         );
 
-        // 6. Upload Artwork (if available) - naming: artwork.jpg / artwork.png
+        // 6. Upload Artwork (if available) - naming: artwork.jpg / artwork.png directly via buffer stream
         let artworkFileId: string | undefined;
         if (data.embeddedArtwork) {
           const ext = data.embeddedArtwork.format.includes('png') ? '.png' : '.jpg';
-          const tempArtPath = path.join(env.localImportFolder, `temp_art_${Date.now()}${ext}`);
-          fs.writeFileSync(tempArtPath, data.embeddedArtwork.data);
-
           const artUpload = await this.retryOperation(() =>
-            googleDriveService.uploadFile({
-              filePath: tempArtPath,
+            googleDriveService.uploadBuffer({
+              buffer: data.embeddedArtwork!.data,
               fileName: `artwork${ext}`,
               mimeType: data.embeddedArtwork!.format,
               parentFolderId: trackFolder.id,
             })
           );
           artworkFileId = artUpload.id;
-          fs.unlinkSync(tempArtPath);
         } else if (data.externalArtworkPath) {
           const ext = path.extname(data.externalArtworkPath);
           const artUpload = await this.retryOperation(() =>
@@ -375,7 +394,13 @@ export class MusicImporter {
         }
 
         // 8. Generate and upload metadata.json
-        const metadataJson = metadataService.generateMetadataJson(data);
+        const metadataJson = metadataService.generateMetadataJson(data, {
+          artistFolderId: artistFolder.id,
+          songFolderId: trackFolder.id,
+          audioFileId: audioUpload.id,
+          artworkFileId,
+          lyricsFileId,
+        });
         const metaUpload = await this.retryOperation(() =>
           googleDriveService.uploadJson({
             data: metadataJson,
@@ -414,6 +439,7 @@ export class MusicImporter {
           fileName: data.originalFileName,
           title: data.title,
           artist: data.artist,
+          driveArtistFolderId: artistFolder.id,
           driveFolderId: trackFolder.id,
           driveAudioFileId: audioUpload.id,
           importedAt: new Date().toISOString(),
@@ -459,6 +485,7 @@ export class MusicImporter {
               originalFileName: data.originalFileName,
               fileSizeBytes: data.fileSizeBytes,
               mimeType: data.mimeType,
+              driveArtistFolderId: artistFolder.id,
               driveFolderId: trackFolder.id,
               driveAudioFileId: audioUpload.id,
               driveArtworkFileId: artworkFileId,
@@ -501,6 +528,26 @@ export class MusicImporter {
           }
         }
 
+        // Clean up local source audio if explicitly requested (e.g. temporary staging directory)
+        if (options.cleanupLocalSourceAfterUpload && fs.existsSync(filePath)) {
+          try {
+            fs.unlinkSync(filePath);
+            if (data.externalArtworkPath && fs.existsSync(data.externalArtworkPath)) {
+              fs.unlinkSync(data.externalArtworkPath);
+            }
+            if (data.lyricsPath && fs.existsSync(data.lyricsPath)) {
+              fs.unlinkSync(data.lyricsPath);
+            }
+            const rawBase = path.basename(filePath, path.extname(filePath));
+            const metaFile = path.join(path.dirname(filePath), `${rawBase}.meta.json`);
+            if (fs.existsSync(metaFile)) {
+              fs.unlinkSync(metaFile);
+            }
+          } catch (cleanErr: any) {
+            console.warn(`  ⚠️ Could not clean up local staged file ${fileName}: ${cleanErr.message}`);
+          }
+        }
+
         console.log(`  Imported successfully! (Folder ID: ${trackFolder.id})`);
         report.push({
           fileName,
@@ -509,6 +556,7 @@ export class MusicImporter {
           status: 'imported',
           codec: data.codec,
           lossless: data.lossless,
+          driveArtistFolderId: artistFolder.id,
           driveFolderId: trackFolder.id,
           driveAudioFileId: audioUpload.id,
         });
@@ -527,6 +575,287 @@ export class MusicImporter {
     }
 
     return report;
+  }
+
+  /**
+   * Imports a song directly to Google Drive without permanent local disk storage.
+   * Can accept a Buffer, Readable stream, remote URL, or an outside temporary file.
+   * If a temporary file is used (in os.tmpdir()), it is automatically removed in a finally block.
+   * Architecture enforced: Dhun Music Library / Artist Name / Song Title / original_audio.ext
+   */
+  async importDirectTrack(options: {
+    fileName: string;
+    audioBuffer?: Buffer;
+    audioStream?: Readable;
+    audioUrl?: string;
+    temporaryFilePath?: string;
+    mimeType?: string;
+    customMetadata?: {
+      title?: string;
+      artist?: string;
+      album?: string;
+      year?: number;
+      genre?: string[];
+      language?: string;
+    };
+    lyricsText?: string;
+    artworkBuffer?: Buffer;
+    artworkFormat?: string;
+    confirmAccount?: boolean;
+    expectedAccountEmail?: string;
+  }): Promise<ImportReportItem> {
+    if (options.confirmAccount !== true) {
+      throw new Error(`[Account Confirmation Required] Explicit confirmation required before live upload to Google account.`);
+    }
+
+    const accountInfo = await googleDriveService.getAccountInfo();
+    if (options.expectedAccountEmail && options.expectedAccountEmail.toLowerCase() !== accountInfo.emailAddress?.toLowerCase()) {
+      throw new Error(`[Google Account Mismatch] Connected account (${accountInfo.emailAddress}) does not match expected account (${options.expectedAccountEmail}).`);
+    }
+
+    const rootFolder = await this.retryOperation(() =>
+      googleDriveService.getLibraryRootFolder(env.driveRootFolderId, env.driveRootFolder)
+    );
+
+    let ephemeralTempFile: string | null = null;
+    try {
+      let data: ExtractedTrackData;
+
+      if (options.audioBuffer) {
+        data = await metadataService.extractMetadataFromBuffer(options.audioBuffer, options.fileName, options.mimeType);
+      } else if (options.temporaryFilePath) {
+        const resolved = path.resolve(options.temporaryFilePath);
+        const projectRoot = path.resolve(process.cwd());
+        if (resolved.startsWith(projectRoot)) {
+          throw new Error(`[Security Violation] Temporary files must be created outside the project directory in os.tmpdir(), not in ${resolved}`);
+        }
+        data = await metadataService.extractMetadata(resolved);
+      } else if (options.audioUrl) {
+        ephemeralTempFile = path.join(os.tmpdir(), `dhun_temp_${Date.now()}_${options.fileName}`);
+        const res = await fetch(options.audioUrl, {
+          headers: { 'User-Agent': 'Dhun-Music-Platform/1.0' },
+          signal: AbortSignal.timeout(60000),
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch audio from ${options.audioUrl}: HTTP ${res.status}`);
+        }
+        const buf = Buffer.from(await res.arrayBuffer());
+        fs.writeFileSync(ephemeralTempFile, buf);
+        data = await metadataService.extractMetadata(ephemeralTempFile);
+      } else {
+        throw new Error(`Either audioBuffer, audioStream, audioUrl, or temporaryFilePath must be provided.`);
+      }
+
+      // Apply custom metadata overrides
+      if (options.customMetadata) {
+        if (options.customMetadata.title) data.title = options.customMetadata.title;
+        if (options.customMetadata.artist) data.artist = options.customMetadata.artist;
+        if (options.customMetadata.album) data.album = options.customMetadata.album;
+        if (options.customMetadata.year) data.year = options.customMetadata.year;
+        if (options.customMetadata.genre) data.genre = options.customMetadata.genre;
+        if (options.customMetadata.language) data.language = options.customMetadata.language;
+      }
+      if (options.lyricsText && metadataService.isValidLyrics(options.lyricsText)) {
+        data.lyricsText = options.lyricsText;
+      }
+
+      // Deduplication check
+      const manifest = this.loadManifest();
+      if (manifest.has(data.fileHash)) {
+        const existing = manifest.get(data.fileHash)!;
+        return {
+          fileName: options.fileName,
+          title: data.title,
+          artist: data.artist,
+          status: 'skipped_duplicate',
+          codec: data.codec,
+          lossless: data.lossless,
+          driveArtistFolderId: existing.driveArtistFolderId,
+          driveFolderId: existing.driveFolderId,
+          driveAudioFileId: existing.driveAudioFileId,
+        };
+      }
+
+      // Resolve canonical folders
+      const { artistFolder, songFolder } = await this.retryOperation(() =>
+        this.findOrCreateArtistAndSongFolders(data.title, data.artist, rootFolder.id)
+      );
+
+      // Upload audio
+      let audioUpload: DriveFileInfo;
+      if (options.audioBuffer) {
+        audioUpload = await this.retryOperation(() =>
+          googleDriveService.uploadBuffer({
+            buffer: options.audioBuffer!,
+            fileName: data.originalFileName,
+            mimeType: data.mimeType,
+            parentFolderId: songFolder.id,
+          })
+        );
+      } else if (options.audioStream) {
+        audioUpload = await this.retryOperation(() =>
+          googleDriveService.uploadStream({
+            stream: options.audioStream!,
+            fileName: data.originalFileName,
+            mimeType: data.mimeType,
+            parentFolderId: songFolder.id,
+          })
+        );
+      } else {
+        const filePath = options.temporaryFilePath || ephemeralTempFile!;
+        audioUpload = await this.retryOperation(() =>
+          googleDriveService.uploadFile({
+            filePath,
+            fileName: data.originalFileName,
+            mimeType: data.mimeType,
+            parentFolderId: songFolder.id,
+          })
+        );
+      }
+
+      // Upload artwork via buffer stream (zero local disk files)
+      let artworkFileId: string | undefined;
+      if (options.artworkBuffer) {
+        const ext = options.artworkFormat?.includes('png') ? '.png' : '.jpg';
+        const artUpload = await this.retryOperation(() =>
+          googleDriveService.uploadBuffer({
+            buffer: options.artworkBuffer!,
+            fileName: `artwork${ext}`,
+            mimeType: ext === '.png' ? 'image/png' : 'image/jpeg',
+            parentFolderId: songFolder.id,
+          })
+        );
+        artworkFileId = artUpload.id;
+      } else if (data.embeddedArtwork) {
+        const ext = data.embeddedArtwork.format.includes('png') ? '.png' : '.jpg';
+        const artUpload = await this.retryOperation(() =>
+          googleDriveService.uploadBuffer({
+            buffer: data.embeddedArtwork!.data,
+            fileName: `artwork${ext}`,
+            mimeType: data.embeddedArtwork!.format,
+            parentFolderId: songFolder.id,
+          })
+        );
+        artworkFileId = artUpload.id;
+      }
+
+      // Upload lyrics
+      let lyricsFileId: string | undefined;
+      if (data.lyricsText && metadataService.isValidLyrics(data.lyricsText)) {
+        const lyricsUpload = await this.retryOperation(() =>
+          googleDriveService.uploadBuffer({
+            buffer: Buffer.from(data.lyricsText!, 'utf8'),
+            fileName: 'lyrics.txt',
+            mimeType: 'text/plain',
+            parentFolderId: songFolder.id,
+          })
+        );
+        lyricsFileId = lyricsUpload.id;
+      }
+
+      // Upload metadata.json
+      const metadataJson = metadataService.generateMetadataJson(data, {
+        artistFolderId: artistFolder.id,
+        songFolderId: songFolder.id,
+        audioFileId: audioUpload.id,
+        artworkFileId,
+        lyricsFileId,
+      });
+
+      const metaUpload = await this.retryOperation(() =>
+        googleDriveService.uploadJson({
+          data: metadataJson,
+          fileName: 'metadata.json',
+          parentFolderId: songFolder.id,
+        })
+      );
+
+      // Verify assets
+      await this.retryOperation(() => googleDriveService.verifyFile(audioUpload.id));
+      if (artworkFileId) await this.retryOperation(() => googleDriveService.verifyFile(artworkFileId!));
+      if (lyricsFileId) await this.retryOperation(() => googleDriveService.verifyFile(lyricsFileId!));
+      await this.retryOperation(() => googleDriveService.verifyFile(metaUpload.id));
+
+      // Save manifest
+      const entry: ManifestEntry = {
+        fileHash: data.fileHash,
+        fileName: data.originalFileName,
+        title: data.title,
+        artist: data.artist,
+        driveArtistFolderId: artistFolder.id,
+        driveFolderId: songFolder.id,
+        driveAudioFileId: audioUpload.id,
+        importedAt: new Date().toISOString(),
+      };
+      manifest.set(data.fileHash, entry);
+      this.saveManifest(manifest);
+
+      // Record in MongoDB if connected
+      if (mongoose.connection.readyState === 1) {
+        try {
+          const trackDoc = await Track.findOneAndUpdate(
+            { fileHash: data.fileHash },
+            {
+              $set: {
+                title: data.title,
+                artist: data.artist,
+                album: data.album,
+                year: data.year,
+                genre: data.genre,
+                durationSeconds: data.durationSeconds,
+                durationMs: data.durationSeconds * 1000,
+                codec: data.codec,
+                lossless: data.lossless,
+                sampleRate: data.sampleRate,
+                bitDepth: data.bitDepth,
+                bitrate: data.bitrate,
+                numberOfChannels: data.numberOfChannels,
+                fileHash: data.fileHash,
+                originalFileName: data.originalFileName,
+                fileSizeBytes: data.fileSizeBytes,
+                mimeType: data.mimeType,
+                driveArtistFolderId: artistFolder.id,
+                driveFolderId: songFolder.id,
+                driveAudioFileId: audioUpload.id,
+                driveArtworkFileId: artworkFileId,
+                driveLyricsFileId: lyricsFileId,
+                driveMetadataFileId: metaUpload.id,
+                hasArtwork: Boolean(artworkFileId),
+                hasLyrics: Boolean(lyricsFileId),
+                lyrics: data.lyricsText || null,
+                importedAt: new Date(),
+              },
+            },
+            { upsert: true, new: true }
+          );
+          if (trackDoc) {
+            await catalogService.linkTrackToCatalog(trackDoc);
+          }
+        } catch (mongoErr: any) {
+          console.warn(`MongoDB write warning for ${options.fileName}: ${mongoErr.message}`);
+        }
+      }
+
+      return {
+        fileName: options.fileName,
+        title: data.title,
+        artist: data.artist,
+        status: 'imported',
+        codec: data.codec,
+        lossless: data.lossless,
+        driveArtistFolderId: artistFolder.id,
+        driveFolderId: songFolder.id,
+        driveAudioFileId: audioUpload.id,
+      };
+    } finally {
+      // Ephemeral temp files outside the project are GUARANTEED to be unlinked
+      if (ephemeralTempFile && fs.existsSync(ephemeralTempFile)) {
+        try { fs.unlinkSync(ephemeralTempFile); } catch {}
+      }
+      if (options.temporaryFilePath && fs.existsSync(options.temporaryFilePath)) {
+        try { fs.unlinkSync(options.temporaryFilePath); } catch {}
+      }
+    }
   }
 
   /**

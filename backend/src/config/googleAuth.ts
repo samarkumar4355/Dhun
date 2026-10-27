@@ -43,32 +43,35 @@ interface ClientCredentialsStructure {
 }
 
 /**
- * Loads the OAuth client configuration from the credentials JSON file.
+ * Loads the OAuth client configuration from environment variable or credentials JSON file.
  * If missing, throws a descriptive error guiding the user on how to resolve it.
  */
 export function loadOAuthCredentials(): { clientId: string; clientSecret: string; redirectUri: string } {
+  let rawContent: string | null = process.env.GOOGLE_CREDENTIALS_JSON || null;
   const credentialsPath = env.credentialsPath;
 
-  if (!fs.existsSync(credentialsPath)) {
-    throw new Error(
-      `[OAuth Setup Error] Google OAuth credentials file not found!\n` +
-      `Expected location: ${credentialsPath}\n\n` +
-      `Action required:\n` +
-      `1. Open Google Cloud Console: https://console.cloud.google.com/\n` +
-      `2. Go to APIs & Services > Credentials.\n` +
-      `3. Download the OAuth 2.0 Client ID (Desktop app) JSON file.\n` +
-      `4. Rename and place it at: ${credentialsPath}\n`
-    );
+  if (!rawContent) {
+    if (!fs.existsSync(credentialsPath)) {
+      throw new Error(
+        `[OAuth Setup Error] Google OAuth credentials file not found!\n` +
+        `Expected location: ${credentialsPath} or GOOGLE_CREDENTIALS_JSON environment variable.\n\n` +
+        `Action required:\n` +
+        `1. Open Google Cloud Console: https://console.cloud.google.com/\n` +
+        `2. Go to APIs & Services > Credentials.\n` +
+        `3. Download the OAuth 2.0 Client ID (Desktop app) JSON file.\n` +
+        `4. Rename and place it at: ${credentialsPath}\n`
+      );
+    }
+    rawContent = fs.readFileSync(credentialsPath, 'utf8');
   }
 
   try {
-    const rawContent = fs.readFileSync(credentialsPath, 'utf8');
     const parsed: ClientCredentialsStructure = JSON.parse(rawContent);
     const clientConfig = parsed.installed || parsed.web;
 
     if (!clientConfig || !clientConfig.client_id || !clientConfig.client_secret) {
       throw new Error(
-        `[OAuth Setup Error] The credentials file at ${credentialsPath} is missing client_id or client_secret.\n` +
+        `[OAuth Setup Error] The credentials configuration is missing client_id or client_secret.\n` +
         `Please ensure you downloaded the correct OAuth 2.0 Desktop app client credentials from Google Cloud Console.`
       );
     }
@@ -85,7 +88,7 @@ export function loadOAuthCredentials(): { clientId: string; clientSecret: string
     if (error.message.includes('[OAuth Setup Error]')) {
       throw error;
     }
-    throw new Error(`Failed to parse credentials file at ${credentialsPath}: ${error.message}`);
+    throw new Error(`Failed to parse credentials: ${error.message}`);
   }
 }
 
@@ -98,10 +101,19 @@ export function createOAuth2Client(): OAuth2Client {
 }
 
 /**
- * Loads existing tokens from local storage if available.
+ * Loads existing tokens from environment variable or local storage if available.
  * Returns null if no valid tokens exist yet.
  */
 export function loadSavedTokens(): Credentials | null {
+  if (process.env.GOOGLE_TOKENS_JSON) {
+    try {
+      const tokens: Credentials = JSON.parse(process.env.GOOGLE_TOKENS_JSON);
+      return tokens;
+    } catch {
+      // Fall through to disk check
+    }
+  }
+
   const tokenPath = env.tokenPath;
   if (!fs.existsSync(tokenPath)) {
     return null;

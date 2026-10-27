@@ -21,8 +21,23 @@ export class CatalogService {
   }
 
   /**
+   * Protected ensemble / band names containing '&' or ',' that should not be split into duets.
+   */
+  private readonly protectedEnsembles = new Set([
+    'simon & garfunkel',
+    'hall & oates',
+    'brooks & dunn',
+    'above & beyond',
+    'earth, wind & fire',
+    'crosby, stills, nash & young',
+    'iron & wine',
+  ]);
+
+  /**
    * Parses artist strings for featured collaborators safely without fabricating.
+   * Consistently identifies primary artist and featured/duet collaborators.
    * e.g. "Josh Woodward feat. Jane Doe" -> primary: "Josh Woodward", featured: ["Jane Doe"]
+   * e.g. "Mohammed Rafi & Lata Mangeshkar" -> primary: "Mohammed Rafi", featured: ["Lata Mangeshkar"]
    */
   parseArtistNames(artistStr: string): { primary: string; featured: string[] } {
     if (!artistStr || artistStr.trim().toLowerCase() === 'unknown artist') {
@@ -30,8 +45,14 @@ export class CatalogService {
     }
 
     const trimmed = artistStr.trim();
+    const lowerTrimmed = trimmed.toLowerCase();
 
-    // Check for parenthesized collaborator: e.g. "Major Lazer (feat. MO & DJ Snake)"
+    // Do not split protected ensemble names
+    if (this.protectedEnsembles.has(lowerTrimmed)) {
+      return { primary: trimmed, featured: [] };
+    }
+
+    // 1. Check for parenthesized collaborator: e.g. "Major Lazer (feat. MO & DJ Snake)"
     const parenMatch = trimmed.match(/^(.*?)\s*\((?:feat\.?|ft\.?|featuring)\s+([^)]+)\)$/i);
     if (parenMatch) {
       const primary = parenMatch[1].trim();
@@ -42,6 +63,7 @@ export class CatalogService {
       return { primary: primary || trimmed, featured };
     }
 
+    // 2. Check for explicit "feat." / "ft." / "featuring": e.g. "Daft Punk feat. Pharrell Williams"
     const featMatch = trimmed.match(/^(.*?)\s+(?:feat\.?|ft\.?|featuring)\s+(.*)$/i);
     if (featMatch) {
       const primary = featMatch[1].trim();
@@ -50,6 +72,21 @@ export class CatalogService {
         .map((s) => s.trim())
         .filter(Boolean);
       return { primary: primary || trimmed, featured };
+    }
+
+    // 3. Check for duet / collaboration separators: " & ", " with ", or ","
+    if (trimmed.includes(' & ') || /\s+with\s+/i.test(trimmed) || (trimmed.includes(',') && !trimmed.includes(', Jr.'))) {
+      const parts = trimmed
+        .split(/\s*&\s*|\s+with\s+|\s*,\s*/i)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      if (parts.length > 1) {
+        return {
+          primary: parts[0],
+          featured: parts.slice(1),
+        };
+      }
     }
 
     return { primary: trimmed, featured: [] };
@@ -71,7 +108,7 @@ export class CatalogService {
    */
   async findOrCreateArtist(
     name: string,
-    options: { genreIds?: Types.ObjectId[]; provenance?: string; bio?: string } = {}
+    options: { genreIds?: Types.ObjectId[]; provenance?: string; bio?: string; driveFolderId?: string } = {}
   ): Promise<IArtist> {
     const canonicalName = name.trim() || 'Unknown Artist';
     const normalized = this.normalizeName(canonicalName);
@@ -84,17 +121,24 @@ export class CatalogService {
         genres: options.genreIds || [],
         provenance: options.provenance || 'tag-extracted',
         bio: options.bio,
+        driveFolderId: options.driveFolderId,
       });
       logger.info(`Created canonical Artist: "${canonicalName}" (ID: ${artist._id})`);
-    } else if (options.genreIds && options.genreIds.length > 0) {
-      // Append any new genres without duplicates
-      const existingGenreSet = new Set(artist.genres.map((id: any) => id.toString()));
+    } else {
       let updated = false;
-      for (const gId of options.genreIds) {
-        if (!existingGenreSet.has(gId.toString())) {
-          artist.genres.push(gId);
-          existingGenreSet.add(gId.toString());
-          updated = true;
+      if (options.driveFolderId && !artist.driveFolderId) {
+        artist.driveFolderId = options.driveFolderId;
+        updated = true;
+      }
+      if (options.genreIds && options.genreIds.length > 0) {
+        // Append any new genres without duplicates
+        const existingGenreSet = new Set(artist.genres.map((id: any) => id.toString()));
+        for (const gId of options.genreIds) {
+          if (!existingGenreSet.has(gId.toString())) {
+            artist.genres.push(gId);
+            existingGenreSet.add(gId.toString());
+            updated = true;
+          }
         }
       }
       if (updated) {
@@ -204,9 +248,16 @@ export class CatalogService {
       genreIds,
     });
 
-    // 4. Update Track references
+    // 4. Update Track references and sync driveArtistFolderId
     track.primaryArtist = primaryArtist._id as Types.ObjectId;
     track.featuredArtists = featuredArtists.map((a) => a._id as Types.ObjectId);
+    if (track.driveArtistFolderId && !primaryArtist.driveFolderId) {
+      primaryArtist.driveFolderId = track.driveArtistFolderId;
+      await primaryArtist.save();
+    } else if (primaryArtist.driveFolderId && !track.driveArtistFolderId) {
+      track.driveArtistFolderId = primaryArtist.driveFolderId;
+    }
+
     if (album) {
       track.albumRef = album._id as Types.ObjectId;
       // Also register track inside album if not already present
